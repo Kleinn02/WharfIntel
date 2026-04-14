@@ -1,0 +1,417 @@
+/* ═════════════════════════════════════════════════════════════════════════════
+   SECURE REGISTRATION & LOGIN SYSTEM - STYLESHEET
+   Cybersecurity Midterm Project
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* This ensures the entire app container fills the screen and centers its children */
+#root {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh; /* Takes 100% of the viewport height */
+  width: 100%;
+  background-color: #000; /* Keeps your dark theme consistent */
+  margin: 0;
+}
+
+/* Ensure your app wrapper doesn't have weird margins */
+#app {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+:root {
+  --bg:         #0a0c10;
+  --surface:    #111318;
+  --border:     #1e2330;
+  --accent:     #4fffb0;
+  --danger:     #ff4f6a;
+  --text:       #e8eaf0;
+  --text-muted: #6b7280;
+  --text-dim:   #3a4055;
+  --mono:       'Space Mono', monospace;
+  --sans:       'DM Sans', sans-serif;
+  --radius:     14px;
+  --shadow:     0 0 40px rgba(79,255,176,0.06);
+}
+
+*, *::before, *::after { 
+  box-sizing: border-box; 
+  margin: 0; 
+  padding: 0; 
+}
+
+body {
+  background: #000000;
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Three.js Canvas */
+#starfieldCanvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+
+/* Background Decorations - Three.js Starfield */
+
+#app {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 460px;
+  padding: 20px;
+}
+
+/* Brand Header */
+.brand { 
+  text-align: center; 
+  margin-bottom: 32px; 
+}
+
+.brand-logo {
+  display: inline-flex; 
+  align-items: center; 
+  gap: 10px; 
+  margin-bottom: 8px;
+}
+
+.brand-name {
+  font-family: var(--mono); 
+  font-size: 28px; 
+  font-weight: 700;
+  color: var(--text); 
+  letter-spacing: -0.5px;
+  text-shadow: 
+    0 0 10px rgba(79,255,176,0.4),
+    0 0 20px rgba(79,255,176,0.2),
+    0 0 30px rgba(79,168,255,0.2),
+    0 0 40px rgba(79,255,176,0.1);
+}
+
+.brand-name span { 
+  color: var(--accent); 
+  text-shadow: 
+    0 0 15px rgba(79,255,176,0.6),
+    0 0 25px rgba(79,255,176,0.4),
+    0 0 35px rgba(79,255,176,0.2);
+}
+
+.brand-tagline {
+  font-size: 12px; 
+  color: var(--text-muted);
+  font-family: var(--mono); 
+  letter-spacing: 1px; 
+  text-transform: uppercase;
+}
+
+/* Main Container */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 36px 36px 32px;
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.04);
+  animation: fadeSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.screen { 
+  display: none; 
+}
+
+.screen.active { 
+  display: block; 
+}
+
+/* Tab Navigation */
+.tab-nav {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px; 
+  margin-bottom: 28px; 
+  gap: 4px;
+}
+
+.tab-btn {
+  flex: 1; 
+  padding: 10px; 
+  border: none; 
+  background: transparent;
+  color: var(--text-muted); 
+  font-family: var(--mono);
+  font-size: 13px; 
+  font-weight: 700; 
+  border-radius: 7px;
+  cursor: pointer; 
+  transition: all 0.2s; 
+  letter-spacing: 0.5px;
+}
+
+.tab-btn.active { 
+  background: var(--accent); 
+  color: #000; 
+}
+
+.tab-btn:not(.active):hover { 
+  color: var(--text); 
+  background: var(--border); 
+}
+
+/* Form Styles */
+.screen-title {
+  font-family: var(--mono); 
+  font-size: 20px; 
+  font-weight: 700;
+  margin-bottom: 4px; 
+  color: var(--text);
+}
+
+.screen-subtitle {
+  font-size: 13px; 
+  color: var(--text-muted); 
+  margin-bottom: 28px; 
+  line-height: 1.5;
+}
+
+.form-group { 
+  margin-bottom: 18px; 
+}
+
+label {
+  display: block; 
+  font-family: var(--mono); 
+  font-size: 11px; 
+  font-weight: 700;
+  letter-spacing: 1px; 
+  text-transform: uppercase; 
+  color: var(--text-muted); 
+  margin-bottom: 8px;
+}
+
+.input-wrap { 
+  position: relative; 
+}
+
+/* Input Icons */
+.input-icon {
+  position: absolute;
+  left: 14px; 
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: var(--text-dim);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Input Fields */
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 13px 44px 13px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+/* Remove browser default password icons */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79,255,176,0.1);
+}
+
+input::placeholder { 
+  color: var(--text-dim); 
+}
+
+/* Eye Visibility Toggle Button */
+.eye-btn {
+  position: absolute;
+  right: 13px; 
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+  z-index: 2;
+}
+
+.eye-btn:hover { 
+  color: var(--accent); 
+}
+
+.eye-btn svg {
+  width: 18px; 
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+  display: block;
+}
+
+/* Password Strength Indicator */
+.strength-bar { 
+  display: flex; 
+  gap: 4px; 
+  margin-top: 8px; 
+}
+
+.strength-seg {
+  flex: 1; 
+  height: 3px; 
+  border-radius: 2px;
+  background: var(--border); 
+  transition: background 0.3s;
+}
+
+.strength-seg.weak   { 
+  background: var(--danger); 
+}
+
+.strength-seg.medium { 
+  background: #f5a623; 
+}
+
+.strength-seg.strong { 
+  background: var(--accent); 
+}
+
+.strength-label { 
+  font-size: 11px; 
+  color: var(--text-muted); 
+  margin-top: 4px; 
+  font-family: var(--mono); 
+}
+
+/* Action Buttons */
+.btn-primary {
+  width: 100%; 
+  padding: 14px; 
+  background: var(--accent); 
+  color: #000;
+  border: none; 
+  border-radius: 10px; 
+  font-family: var(--mono);
+  font-size: 13px; 
+  font-weight: 700; 
+  letter-spacing: 1px;
+  text-transform: uppercase; 
+  cursor: pointer; 
+  margin-top: 8px;
+  transition: opacity 0.2s, transform 0.1s;
+  position: relative; 
+  overflow: hidden;
+}
+
+.btn-primary:hover:not(:disabled)  { 
+  opacity: 0.88; 
+}
+
+.btn-primary:active:not(:disabled) { 
+  transform: scale(0.99); 
+}
+
+.btn-primary:disabled { 
+  opacity: 0.4; 
+  cursor: not-allowed; 
+}
+
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+/* Alerts and Feedback */
+.alert {
+  padding: 12px 14px; 
+  border-radius: 10px; 
+  font-size: 13px;
+  margin-top: 16px; 
+  display: none;
+  align-items: flex-start; 
+  gap: 10px; 
+  line-height: 1.5;
+}
+
+.alert.show { 
+  display: flex; 
+  animation: fadeSlideIn 0.3s ease both; 
+}
+
+.alert-success {
+  background: rgba(79,255,176,0.08);
+  border: 1px solid rgba(79,255,176,0.25);
+  color: var(--accent);
+}
+
+.alert-error {
+  background: rgba(255,79,106,0.08);
+  border: 1px solid rgba(255,79,106,0.25);
+  color: var(--danger);
+}
+
+/* Spinner Animation */
+.spinner {
+  display: inline-block; 
+  width: 13px; 
+  height: 13px;
+  border: 2px solid rgba(0,0,0,0.2); 
+  border-top-color: #000;
+  border-radius: 50%; 
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle; 
+  margin-right: 6px;
+}
+
+@keyframes spin { 
+  to { transform: rotate(360deg); } 
+}
+
+/* Responsive Design */
+@media (max-width: 600px) { 
+  .card { 
+    padding: 26px 20px; 
+  } 
+}
