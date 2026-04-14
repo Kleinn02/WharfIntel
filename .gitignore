@@ -1,0 +1,12 @@
+# Mac files
+.DS_Store
+
+# Python / Backend
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+.env
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
