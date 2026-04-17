@@ -1,0 +1,144 @@
+:root {
+  --neon-mint: #4fffb0;
+  --bg-dark: #0a0c10;
+  --glass: rgba(255, 255, 255, 0.03);
+}
+
+.landing-container {
+  background: var(--bg-dark);
+  color: #fff;
+  min-height: 100vh;
+  font-family: 'Space Mono', monospace;
+}
+
+.wharf-nav {
+  display: flex;
+  justify-content: space-between;
+  padding: 2rem 5%;
+  align-items: center;
+}
+
+/* Navigation Container */
+.wharf-nav.fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 8%; /* Added more side breathing room */
+  z-index: 1000;
+  background: rgba(10, 12, 16, 0.7);
+  backdrop-filter: blur(12px); /* Professional frosted glass look */
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Nav Links & Buttons Group */
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+}
+
+.nav-links a {
+  color: #e8eaf0;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.nav-links a:hover { opacity: 1; }
+
+/* Login Text Button */
+.nav-btn-text {
+  background: none;
+  border: none;
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+/* Register Pill Button (The "Liquid Brokers" Style) */
+.nav-btn-pill {
+  background: #ffffff; /* High contrast white */
+  color: #000000;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 50px; /* Perfect pill shape */
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.nav-btn-pill:hover {
+  background: #f0f0f0;
+  transform: translateY(-1px);
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.logo span { color: var(--neon-mint); }
+
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 5% 10%;
+  align-items: center;
+  min-height: 80vh;
+}
+
+.hero h1 {
+  font-size: 3.5rem;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+}
+
+.hero h1 span { color: var(--neon-mint); }
+
+.hero p {
+  color: #888;
+  max-width: 500px;
+  margin-bottom: 2rem;
+}
+
+.btn-main {
+  background: var(--neon-mint);
+  color: #000;
+  padding: 12px 30px;
+  border: none;
+  border-radius: 5px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-right: 1rem;
+  transition: 0.3s;
+}
+
+.btn-main:hover {
+  box-shadow: 0 0 20px rgba(79, 255, 176, 0.4);
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+  padding: 5% 10%;
+}
+
+.feature-card {
+  background: var(--glass);
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}

@@ -1,10 +1,11 @@
 // src/App.jsx
 import AuthPage from './pages/AuthPage';
+import LandingPage from './pages/LandingPage';
 
 function App() {
   return (
     <div className="App">
-      <AuthPage />
+      <LandingPage />
     </div>
   );
 }

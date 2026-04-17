@@ -196,18 +196,25 @@ body {
 }
 
 .form-group { 
-  margin-bottom: 18px; 
+  margin-bottom: 10px; 
 }
 
 label {
+  position: relative;
   display: block; 
+  right: 140px;
   font-family: var(--mono); 
   font-size: 11px; 
   font-weight: 700;
   letter-spacing: 1px; 
   text-transform: uppercase; 
   color: var(--text-muted); 
-  margin-bottom: 8px;
+  margin-bottom: 1px;
+}
+
+.con-firm {
+  position: relative;
+  right: 110px;
 }
 
 .input-wrap { 
@@ -414,4 +421,85 @@ input::placeholder {
   .card { 
     padding: 26px 20px; 
   } 
+}
+
+.exit-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.exit-btn:hover {
+  color: var(--danger);
+}
+
+.auth-modal-card {
+  position: relative; /* Essential for positioning the exit button */
+  animation: modalPop 0.3s cubic-bezier(0.17, 0.89, 0.32, 1.28);
+}
+
+/* Fix for the giant stretching modal */
+.auth-modal-card {
+  width: 100%;
+  max-width: 420px; /* This forces it to be a compact card */
+  margin: 0 auto;
+  position: relative;
+  background: #111318; /* Matches your dark theme */
+  border: 1px solid #1e2330;
+  border-radius: 14px;
+  padding: 36px 36px 32px;
+  box-shadow: 0 0 40px rgba(79,255,176,0.06);
+  z-index: 2001; /* Keeps it above the blur overlay */
+}
+
+/* Ensure the blur overlay centers the card perfectly */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.6); /* Slightly darker to make the card pop */
+}
+
+/* Password Strength Indicator */
+.strength-bar { 
+  display: flex; 
+  gap: 4px; 
+  margin-top: 8px; 
+}
+
+.strength-seg {
+  flex: 1; 
+  height: 3px; 
+  border-radius: 2px;
+  background: var(--border, #1e2330); /* Dark empty state */
+  transition: background 0.3s ease;
+}
+
+/* Color states for the bars */
+.strength-seg.weak { background: #ff4f6a; }   /* Red */
+.strength-seg.medium { background: #f5a623; } /* Orange */
+.strength-seg.strong { background: #4fffb0; } /* Neon Mint */
+
+.strength-label { 
+  font-size: 11px; 
+  color: var(--text-muted, #6b7280); 
+  margin-top: 4px; 
+  font-family: 'Space Mono', monospace; 
+}
+
+@keyframes modalPop {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
 }
