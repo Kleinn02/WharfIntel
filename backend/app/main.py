@@ -55,3 +55,38 @@ def login(user: UserAuth, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     return {"message": "Login successful!", "user": db_user.username}
+
+# ... your existing code ...
+
+@app.get("/api/vessels/active")
+def get_active_vessels():
+    # Mock data centered around Panabo Wharf (7.284, 125.681)
+    return [
+        {
+            "id": "v1", 
+            "name": "MSC ALICIA", 
+            "type": "Cargo",
+            "lat": 7.280, 
+            "lng": 125.685, 
+            "status": "Docked", 
+            "heading": 45
+        },
+        {
+            "id": "v2", 
+            "name": "DAVAO EXPRESS", 
+            "type": "Tanker",
+            "lat": 7.292, 
+            "lng": 125.695, 
+            "status": "Inbound", 
+            "heading": 210
+        },
+        {
+            "id": "v3", 
+            "name": "OCEAN VOYAGER", 
+            "type": "Container",
+            "lat": 7.275, 
+            "lng": 125.670, 
+            "status": "Outbound", 
+            "heading": 135
+        },
+    ]

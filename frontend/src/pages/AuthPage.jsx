@@ -1,8 +1,10 @@
 // src/pages/AuthPage.jsx
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // <-- Add this
 import './AuthStyle.css';
 
 const AuthPage = ({ initialMode, onClose }) => {
+  const navigate = useNavigate(); // <-- Initialize hook
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
   
   // Form State
@@ -59,8 +61,14 @@ const AuthPage = ({ initialMode, onClose }) => {
       const data = await response.json();
       if (response.ok) {
         setIsSuccess(true);
-        setMessage(isLogin ? "Login Successful!" : "Account created successfully! You can now log in.");
-        if (!isLogin) {
+        setMessage(isLogin ? "Login Successful! Redirecting..." : "Account created successfully! You can now log in.");
+        
+        if (isLogin) {
+          // Give them a half-second to actually see the success message
+          setTimeout(() => {
+            navigate('/dashboard'); 
+          }, 600);
+        } else {
           setUsername("");
           setPassword("");
           setConfirmPassword("");
