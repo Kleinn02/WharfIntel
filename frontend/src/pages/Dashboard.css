@@ -459,3 +459,183 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* =========================================
+   MODERN EXPORT MODAL 
+========================================= */
+.export-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.export-modal {
+  background: rgba(17, 19, 24, 0.95);
+  border: 1px solid #1e293b;
+  border-top: 4px solid #2ecc71; /* Green accent */
+  border-radius: 16px;
+  padding: 25px 30px;
+  width: 100%;
+  max-width: 450px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+  text-align: right;
+}
+
+.cargo {
+  right: 290px;
+}
+
+.weight {
+  right: 80px;
+}
+
+.port {
+  right: 135px;
+}
+
+.export-modal-header {
+  border-bottom: 1px solid #1e293b;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+
+.export-modal-header h3 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.export-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Modern Input & Select Styling */
+.modern-input, .modern-select {
+  width: 100%;
+  padding: 12px 14px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #f8fafc;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.modern-input::placeholder {
+  color: #475569;
+}
+
+.modern-input:focus, .modern-select:focus {
+  border-color: #2ecc71;
+  box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.2);
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+/* Modal Buttons */
+.export-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.btn-cancel-modern {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #334155;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s;
+}
+
+.btn-cancel-modern:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.btn-confirm-modern {
+  background: #2ecc71;
+  color: #0f172a;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.2s;
+  box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+}
+
+.btn-confirm-modern:hover {
+  background: #27ae60;
+  transform: translateY(-1px);
+}
+
+/* =========================================
+   TIME WARP CONTROLS (AURA UNLOCKED)
+========================================= */
+.time-warp-container {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(17, 19, 24, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid #334155;
+  padding: 8px 12px;
+  border-radius: 30px;
+  display: flex;
+  gap: 8px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.time-btn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.time-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Active States */
+.time-btn.active-live { background: #3b82f6; color: #fff; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
+.time-btn.active-fast { background: #f59e0b; color: #fff; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+.time-btn.active-warp { background: #ef4444; color: #fff; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }

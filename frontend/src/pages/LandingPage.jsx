@@ -21,10 +21,10 @@ const LandingPage = () => {
       <main className={`main-content ${authMode ? 'blurred' : ''}`}>
         <header className="hero">
           <div className="hero-content">
-            <h1 className="glitch-text">Streamlining Global <span>Maritime</span> Logistics</h1>
+            <h1 className="glitch-text"><span>Maritime</span> Logistics Simulation</h1>
             <p>Advanced GIS and Time-Series Analysis for real-time port optimization.</p>
             <div className="hero-btns">
-              <button className="btn-main" onClick={() => setAuthMode('register')}>Deploy System</button>
+              <button className="btn-main" onClick={() => setAuthMode('register')}>Simulate</button>
             </div>
           </div>
           <div className="hero-visual">
