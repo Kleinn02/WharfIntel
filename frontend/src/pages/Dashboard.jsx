@@ -50,6 +50,15 @@ const CameraController = ({ activeExports }) => {
 const Dashboard = () => {
   const navigate = useNavigate(); 
   const portPosition = [7.284, 125.681]; 
+
+  // --- Demo Routing Dictionary ---
+  const ROUTE_MAP = {
+    'japan': { lat: 35.676, lng: 139.650, ms: 518400000 },      
+    'korea': { lat: 35.101, lng: 129.035, ms: 432000000 },      
+    'taiwan': { lat: 25.033, lng: 121.565, ms: 259200000 },     
+    'singapore': { lat: 1.290, lng: 103.850, ms: 345600000 },   
+    'default': { lat: 14.599, lng: 120.984, ms: 172800000 }     
+  };
   
   // --- Standard UI State ---
   const [vessels, setVessels] = useState([]);
@@ -73,6 +82,7 @@ const Dashboard = () => {
   // Right under your vessels state, add this:
   const [forecastData, setForecastData] = useState([]);
 
+<<<<<<< HEAD
   // --- Live Data Polling Engine (Vessels + Analytics) ---
   useEffect(() => {
     const fetchAllData = async () => {
@@ -89,16 +99,67 @@ const Dashboard = () => {
         if (forecastRes.ok) {
           const forecastData = await forecastRes.json();
           setForecastData(forecastData);
+=======
+  // --- Live Data Polling Engine (Vessels + Analytics + Postgres Exports) ---
+  useEffect(() => {
+    const fetchAllData = async () => {
+      try {
+        // 1. Fetch Live Ships (AISStream)
+        const vesselRes = await fetch('http://127.0.0.1:8000/api/vessels/active');
+        if (vesselRes.ok) setVessels(await vesselRes.json());
+
+        // 2. Fetch ML Forecast
+        const forecastRes = await fetch('http://127.0.0.1:8000/api/analytics/forecast');
+        if (forecastRes.ok) setForecastData(await forecastRes.json());
+
+        // 3. Fetch Saved Exports from PostgreSQL (CURE AMNESIA)
+        const exportRes = await fetch('http://127.0.0.1:8000/api/ticketing/active');
+        if (exportRes.ok) {
+          const dbExports = await exportRes.json();
+          
+          // Map the database rows back into map markers
+          const recoveredExports = dbExports.map(dbExp => {
+            const destInput = dbExp.destination_country.toLowerCase();
+            let matchedRoute = ROUTE_MAP['default'];
+            
+            for (const key in ROUTE_MAP) {
+              if (destInput.includes(key)) {
+                matchedRoute = ROUTE_MAP[key];
+                break;
+              }
+            }
+
+            return {
+              id: `EXP-DB-${dbExp.id}`,
+              cargo: dbExp.cargo_name,
+              weight: dbExp.weight_kg,
+              destination: dbExp.destination_country,
+              scale: dbExp.scale,
+              startLat: 7.284, startLng: 125.681,
+              endLat: matchedRoute.lat, endLng: matchedRoute.lng,
+              // Convert the Postgres timestamp to milliseconds so the physics engine resumes perfectly
+              startTime: new Date(dbExp.departure_time).getTime(), 
+              duration: matchedRoute.ms,
+              status: dbExp.status === 'Preparing' ? 'Outbound' : dbExp.status
+            };
+          });
+
+          setActiveExports(recoveredExports);
+>>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
         }
       } catch (error) {
         console.error("Command Center Data Sync Failed:", error);
       }
     };
 
+<<<<<<< HEAD
     // Run it immediately on load
     fetchAllData(); 
     
     // Then run it every 10 seconds to keep the map alive
+=======
+    fetchAllData(); 
+>>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
     const interval = setInterval(fetchAllData, 10000); 
     return () => clearInterval(interval);
   }, []);
@@ -113,6 +174,7 @@ const Dashboard = () => {
     scale: 'Global'
   });
 
+<<<<<<< HEAD
   // --- Updated Submit Handler (Now with Postgres Integration!) ---
   const handleTicketSubmit = async (e) => {
     e.preventDefault();
@@ -161,6 +223,16 @@ const Dashboard = () => {
         headers: {
           'Content-Type': 'application/json',
         },
+=======
+  // --- Simplified Submit Handler ---
+  const handleTicketSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/ticketing/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+>>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
         body: JSON.stringify({
           cargo_name: ticketForm.cargo,
           weight_kg: Number(ticketForm.weight),
@@ -171,14 +243,24 @@ const Dashboard = () => {
 
       if (response.ok) {
         console.log("🔥 Shipment safely locked into PostgreSQL!");
+<<<<<<< HEAD
       } else {
         console.error("Failed to save shipment to the database.");
+=======
+        // We no longer need to manually push to activeExports. 
+        // The fetchAllData engine will pick it up on the next 10-second tick, 
+        // or when you refresh the page!
+>>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
       }
     } catch (error) {
       console.error("Backend connection error:", error);
     }
 
+<<<<<<< HEAD
     // 3. Reset the form
+=======
+    setShowTicketModal(false);
+>>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
     setTicketForm({ cargo: '', weight: '', destination: '', scale: 'Global' }); 
   };
 

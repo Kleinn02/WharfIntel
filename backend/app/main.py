@@ -131,6 +131,16 @@ def create_ticket(ticket: ShipmentCreate, db: Session = Depends(get_db)):
     db.refresh(new_shipment)
     return {"message": "Export protocol initiated", "ticket_id": new_shipment.id}
 
+<<<<<<< HEAD
+=======
+# Add this in app/main.py
+@app.get("/api/ticketing/active")
+def get_active_tickets(db: Session = Depends(get_db)):
+    # Fetch all shipments from PostgreSQL
+    # (In a massive production app, we'd filter out "Arrived" ones, but this is perfect for the demo)
+    return db.query(Shipment).all()
+
+>>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
 @app.get("/api/analytics/forecast")
 def get_traffic_forecast():
     return [
