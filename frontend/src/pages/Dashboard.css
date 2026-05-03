@@ -1,3 +1,4 @@
+/* --- BASE LAYOUT --- */
 .dashboard-wrapper {
   display: flex;
   height: 100vh;
@@ -5,16 +6,69 @@
   background-color: #0a0c10;
   color: #e8eaf0;
   font-family: 'Space Mono', monospace;
+  overflow: hidden;
 }
 
 .sidebar {
-  width: 260px;
+  width: 280px;
   background: rgba(17, 19, 24, 0.95);
   border-right: 1px solid #1e2330;
   display: flex;
   flex-direction: column;
   padding: 24px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 10;
+}
+
+.sidebar.hidden {
+  transform: translateX(-100%);
+  margin-left: -280px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 30px;
+}
+
+/* THE INNER HAMBURGER (CLOSE) */
+.sidebar-toggle-inner {
+  position: relative;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  width: 35px;
+  height: 35px;
+  border-radius: 8px;
+  bottom: 25px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.sidebar-toggle-inner:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* THE FLOATING HAMBURGER (OPEN) */
+.floating-hamburger {
+  position: absolute;
+  top: 25px;
+  left: 25px;
+  z-index: 2001;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #2ecc71;
+  width: 45px;
+  height: 45px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  font-size: 20px;
 }
 
 .sidebar .brand {
@@ -41,6 +95,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 100%;
 }
 
 .side-nav button {
@@ -66,8 +121,24 @@
   border: 1px solid rgba(79, 255, 176, 0.2);
 }
 
+.btn-link-sim {
+  background: rgba(46, 204, 113, 0.1) !important;
+  color: #2ecc71 !important;
+  margin-top: auto !important; /* Pushes everything below it to the bottom */
+  margin-bottom: 10px;
+  border: 1px solid #2ecc71 !important;
+  font-weight: 800 !important;
+  text-align: center !important;
+  box-shadow: 0 4px 12px rgba(46, 204, 113, 0.15);
+}
+
+.btn-link-sim:hover {
+  background: #2ecc71 !important;
+  color: #0f172a !important;
+  transform: translateY(-2px);
+}
+
 .side-nav button.logout {
-  margin-top: auto;
   color: #ff4f6a;
 }
 
@@ -76,14 +147,13 @@
   position: relative;
 }
 
-/* This is the most crucial class for Leaflet */
+/* --- LEAFLET OVERRIDES --- */
 .leaflet-container {
   height: 100%;
   width: 100%;
-  background: #000; /* Prevents white flash while tiles load */
+  background: #000; 
 }
 
-/* Tweak the popup to look slightly less like 2012 Google Maps */
 .leaflet-popup-content-wrapper {
   background: #111318 !important;
   color: #e8eaf0 !important;
@@ -96,7 +166,7 @@
   border: 1px solid #1e2330;
 }
 
-/* --- Vessel Markers & Radars --- */
+/* --- VESSEL MARKERS --- */
 .custom-vessel-icon {
   background: transparent;
   border: none;
@@ -125,18 +195,22 @@
   animation: radar-pulse 2s infinite ease-out;
 }
 
-/* Colors based on status */
-.status-docked { background-color: #4fffb0; } /* Neon Mint */
-.status-inbound { background-color: #f5a623; } /* Warning Orange */
-.status-outbound { background-color: #00d2ff; } /* Cyan */
-.status-default { background-color: #6b7280; } /* Gray */
+.vessel-pulse.paused {
+  animation-play-state: paused;
+  opacity: 0.2; 
+  border: 1px solid rgba(255, 255, 255, 0.3); 
+}
+
+.status-docked { background-color: #4fffb0; } 
+.status-inbound { background-color: #f5a623; } 
+.status-outbound { background-color: #00d2ff; } 
+.status-default { background-color: #6b7280; } 
 
 @keyframes radar-pulse {
   0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.8; }
   100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
 }
 
-/* --- Tweak the Popup Styling --- */
 .popup-header {
   display: flex;
   justify-content: space-between;
@@ -163,7 +237,61 @@
 .badge.inbound { color: #f5a623; background: rgba(245, 166, 35, 0.1); }
 .badge.outbound { color: #00d2ff; background: rgba(0, 210, 255, 0.1); }
 
-/* --- Floating Overlay Panels --- */
+/* --- MODERN ON/OFF RADAR SWITCH --- */
+.radar-switch-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 10px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.radar-text {
+  position: relative;
+  left: 50px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #94a3b8;
+  letter-spacing: 1px;
+}
+
+.switch {
+  position: relative;
+  right: 170px;
+  display: inline-block;
+  width: 42px;
+  height: 22px;
+}
+
+.switch input { opacity: 0; width: 0; height: 0; }
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #334155;
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider { background-color: #2ecc71; }
+input:checked + .slider:before { transform: translateX(20px); }
+
+
+/* --- FLOATING OVERLAY PANELS --- */
 .floating-panel {
   position: absolute;
   top: 24px;
@@ -176,7 +304,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1000; /* Keeps it above the Leaflet map */
+  z-index: 1000; 
   display: flex;
   flex-direction: column;
   padding: 20px;
@@ -211,7 +339,6 @@
   font-weight: bold;
 }
 
-/* --- Search Bar --- */
 .traffic-search {
   width: 100%;
   padding: 12px 14px;
@@ -230,16 +357,14 @@
   border-color: #4fffb0;
 }
 
-/* --- Traffic List & Cards --- */
 .traffic-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
-  padding-right: 4px; /* Space for scrollbar */
+  padding-right: 4px; 
 }
 
-/* Custom Scrollbar */
 .traffic-list::-webkit-scrollbar {
   width: 4px;
 }
@@ -274,7 +399,6 @@
   margin: 0;
   font-size: 14px;
   color: #fff;
-  font-family: var(--mono);
 }
 
 .tc-bottom {
@@ -291,7 +415,7 @@
   font-size: 13px;
 }
 
-/* --- Analytics Panel Styles --- */
+/* --- ANALYTICS PANEL --- */
 .stats-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -320,7 +444,6 @@
 
 .stat-value {
   font-size: 28px;
-  font-family: var(--mono);
   font-weight: 700;
   color: #fff;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
@@ -334,46 +457,7 @@
   letter-spacing: 1px;
 }
 
-.analytics-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.bar-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.bar-label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #e8eaf0;
-  font-family: var(--mono);
-}
-
-.bar-track {
-  width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.5s ease-out;
-}
-
-.bar-fill.docked { background: #4fffb0; box-shadow: 0 0 8px rgba(79, 255, 176, 0.5); }
-.bar-fill.inbound { background: #f5a623; box-shadow: 0 0 8px rgba(245, 166, 35, 0.5); }
-.bar-fill.outbound { background: #00d2ff; box-shadow: 0 0 8px rgba(0, 210, 255, 0.5); }
-
-
-/* --- Custom Logout Modal --- */
+/* --- CUSTOM LOGOUT MODAL --- */
 .logout-overlay {
   position: fixed;
   top: 0;
@@ -383,7 +467,7 @@
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 9999; /* Must be above EVERYTHING */
+  z-index: 9999; 
   display: flex;
   justify-content: center;
   align-items: center;
@@ -392,7 +476,7 @@
 
 .logout-modal {
   background: rgba(17, 19, 24, 0.95);
-  border: 1px solid rgba(255, 79, 106, 0.3); /* Slight red tint to border */
+  border: 1px solid rgba(255, 79, 106, 0.3); 
   border-radius: 16px;
   padding: 32px;
   width: 100%;
@@ -405,7 +489,6 @@
 .logout-modal h3 {
   margin: 0 0 12px 0;
   color: #fff;
-  font-family: var(--sans);
   font-size: 20px;
 }
 
@@ -425,7 +508,6 @@
   flex: 1;
   padding: 12px;
   border-radius: 8px;
-  font-family: var(--mono);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -460,182 +542,7 @@
   to { opacity: 1; }
 }
 
-/* =========================================
-   MODERN EXPORT MODAL 
-========================================= */
-.export-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(5px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
+@keyframes modalPop {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
-
-.export-modal {
-  background: rgba(17, 19, 24, 0.95);
-  border: 1px solid #1e293b;
-  border-top: 4px solid #2ecc71; /* Green accent */
-  border-radius: 16px;
-  padding: 25px 30px;
-  width: 100%;
-  max-width: 450px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-  text-align: right;
-}
-
-.cargo {
-  right: 290px;
-}
-
-.weight {
-  right: 80px;
-}
-
-.port {
-  right: 135px;
-}
-
-.export-modal-header {
-  border-bottom: 1px solid #1e293b;
-  padding-bottom: 15px;
-  margin-bottom: 20px;
-}
-
-.export-modal-header h3 {
-  margin: 0;
-  color: #f8fafc;
-  font-size: 1.3rem;
-  font-weight: 600;
-}
-
-.export-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-/* Modern Input & Select Styling */
-.modern-input, .modern-select {
-  width: 100%;
-  padding: 12px 14px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  color: #f8fafc;
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
-  outline: none;
-}
-
-.modern-input::placeholder {
-  color: #475569;
-}
-
-.modern-input:focus, .modern-select:focus {
-  border-color: #2ecc71;
-  box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.2);
-}
-
-.form-row {
-  display: flex;
-  gap: 12px;
-}
-
-/* Modal Buttons */
-.export-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 10px;
-}
-
-.btn-cancel-modern {
-  background: transparent;
-  color: #94a3b8;
-  border: 1px solid #334155;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: 0.2s;
-}
-
-.btn-cancel-modern:hover {
-  background: #1e293b;
-  color: #f8fafc;
-}
-
-.btn-confirm-modern {
-  background: #2ecc71;
-  color: #0f172a;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  transition: 0.2s;
-  box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
-}
-
-.btn-confirm-modern:hover {
-  background: #27ae60;
-  transform: translateY(-1px);
-}
-
-/* =========================================
-   TIME WARP CONTROLS (AURA UNLOCKED)
-========================================= */
-.time-warp-container {
-  position: absolute;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(17, 19, 24, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid #334155;
-  padding: 8px 12px;
-  border-radius: 30px;
-  display: flex;
-  gap: 8px;
-  z-index: 1000;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-}
-
-.time-btn {
-  background: transparent;
-  color: #94a3b8;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 20px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: all 0.3s ease;
-}
-
-.time-btn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-/* Active States */
-.time-btn.active-live { background: #3b82f6; color: #fff; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4); }
-.time-btn.active-fast { background: #f59e0b; color: #fff; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
-.time-btn.active-warp { background: #ef4444; color: #fff; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }

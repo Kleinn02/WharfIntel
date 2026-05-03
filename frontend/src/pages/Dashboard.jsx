@@ -4,103 +4,42 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './Dashboard.css'; 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
-const createVesselIcon = (status) => {
+// Generate vessel icon with optional pausing for the radar toggle
+const createVesselIcon = (status, isAnimated = true) => {
   let colorClass = 'status-default';
   if (status === 'Docked') colorClass = 'status-docked';
   if (status === 'Inbound') colorClass = 'status-inbound';
   if (status === 'Outbound') colorClass = 'status-outbound';
 
+  const animationClass = isAnimated ? '' : 'paused';
+
   return L.divIcon({
     className: 'custom-vessel-icon',
-    html: `<div class="vessel-dot ${colorClass}"></div><div class="vessel-pulse ${colorClass}"></div>`,
+    html: `
+      <div class="vessel-dot ${colorClass}"></div>
+      <div class="vessel-pulse ${colorClass} ${animationClass}"></div>
+    `,
     iconSize: [20, 20],
     iconAnchor: [10, 10], 
   });
 };
 
-// This invisible component controls the map's camera
-const CameraController = ({ activeExports }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (activeExports.length > 0) {
-      // Get the most recently added export
-      const latestExport = activeExports[activeExports.length - 1];
-      
-      // Create a bounding box that includes both the origin and the destination
-      const bounds = L.latLngBounds(
-        [latestExport.startLat, latestExport.startLng],
-        [latestExport.endLat, latestExport.endLng]
-      );
-      
-      // Tell the map to fly to that box with a smooth animation and a little padding
-      map.fitBounds(bounds, { 
-        padding: [50, 50], 
-        animate: true, 
-        duration: 1.5 // 1.5 seconds of cinematic panning
-      });
-    }
-  }, [activeExports, map]);
-
-  return null; // It renders nothing visually
-};
-
 const Dashboard = () => {
   const navigate = useNavigate(); 
   const portPosition = [7.284, 125.681]; 
-
-  // --- Demo Routing Dictionary ---
-  const ROUTE_MAP = {
-    'japan': { lat: 35.676, lng: 139.650, ms: 518400000 },      
-    'korea': { lat: 35.101, lng: 129.035, ms: 432000000 },      
-    'taiwan': { lat: 25.033, lng: 121.565, ms: 259200000 },     
-    'singapore': { lat: 1.290, lng: 103.850, ms: 345600000 },   
-    'default': { lat: 14.599, lng: 120.984, ms: 172800000 }     
-  };
   
-  // --- Standard UI State ---
+  // --- UI & Layout State ---
   const [vessels, setVessels] = useState([]);
+  const [forecastData, setForecastData] = useState([]);
   const [activeMenu, setActiveMenu] = useState('live_map'); 
   const [searchTerm, setSearchTerm] = useState(''); 
   const [showLogout, setShowLogout] = useState(false); 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showAISTraffic, setShowAISTraffic] = useState(true); 
 
-  // --- Simulation Time Engine ---
-  const [simSpeed, setSimSpeed] = useState(1); 
-  const [simTime, setSimTime] = useState(Date.now());
-
-  useEffect(() => {
-    const tickRateMs = 1000; 
-    const interval = setInterval(() => {
-      setSimTime(prev => prev + (tickRateMs * simSpeed));
-    }, tickRateMs);
-    return () => clearInterval(interval);
-  }, [simSpeed]);
-
-  // --- Live Vessel Fetching ---
-  // Right under your vessels state, add this:
-  const [forecastData, setForecastData] = useState([]);
-
-<<<<<<< HEAD
   // --- Live Data Polling Engine (Vessels + Analytics) ---
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        // 1. Fetch the Live Ships
-        const vesselRes = await fetch('http://127.0.0.1:8000/api/vessels/active');
-        if (vesselRes.ok) {
-          const vesselData = await vesselRes.json();
-          setVessels(vesselData);
-        }
-
-        // 2. Fetch the ML Forecast
-        const forecastRes = await fetch('http://127.0.0.1:8000/api/analytics/forecast');
-        if (forecastRes.ok) {
-          const forecastData = await forecastRes.json();
-          setForecastData(forecastData);
-=======
-  // --- Live Data Polling Engine (Vessels + Analytics + Postgres Exports) ---
   useEffect(() => {
     const fetchAllData = async () => {
       try {
@@ -111,158 +50,15 @@ const Dashboard = () => {
         // 2. Fetch ML Forecast
         const forecastRes = await fetch('http://127.0.0.1:8000/api/analytics/forecast');
         if (forecastRes.ok) setForecastData(await forecastRes.json());
-
-        // 3. Fetch Saved Exports from PostgreSQL (CURE AMNESIA)
-        const exportRes = await fetch('http://127.0.0.1:8000/api/ticketing/active');
-        if (exportRes.ok) {
-          const dbExports = await exportRes.json();
-          
-          // Map the database rows back into map markers
-          const recoveredExports = dbExports.map(dbExp => {
-            const destInput = dbExp.destination_country.toLowerCase();
-            let matchedRoute = ROUTE_MAP['default'];
-            
-            for (const key in ROUTE_MAP) {
-              if (destInput.includes(key)) {
-                matchedRoute = ROUTE_MAP[key];
-                break;
-              }
-            }
-
-            return {
-              id: `EXP-DB-${dbExp.id}`,
-              cargo: dbExp.cargo_name,
-              weight: dbExp.weight_kg,
-              destination: dbExp.destination_country,
-              scale: dbExp.scale,
-              startLat: 7.284, startLng: 125.681,
-              endLat: matchedRoute.lat, endLng: matchedRoute.lng,
-              // Convert the Postgres timestamp to milliseconds so the physics engine resumes perfectly
-              startTime: new Date(dbExp.departure_time).getTime(), 
-              duration: matchedRoute.ms,
-              status: dbExp.status === 'Preparing' ? 'Outbound' : dbExp.status
-            };
-          });
-
-          setActiveExports(recoveredExports);
->>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
-        }
       } catch (error) {
         console.error("Command Center Data Sync Failed:", error);
       }
     };
 
-<<<<<<< HEAD
-    // Run it immediately on load
     fetchAllData(); 
-    
-    // Then run it every 10 seconds to keep the map alive
-=======
-    fetchAllData(); 
->>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
     const interval = setInterval(fetchAllData, 10000); 
     return () => clearInterval(interval);
   }, []);
-
-  // --- Ticketing & Export State ---
-  const [showTicketModal, setShowTicketModal] = useState(false);
-  const [activeExports, setActiveExports] = useState([]);
-  const [ticketForm, setTicketForm] = useState({
-    cargo: '',
-    weight: '',
-    destination: '',
-    scale: 'Global'
-  });
-
-<<<<<<< HEAD
-  // --- Updated Submit Handler (Now with Postgres Integration!) ---
-  const handleTicketSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Panabo Wharf starting coordinates
-    const startLat = 7.284;
-    const startLng = 125.681;
-    
-    const routes = {
-      'japan': { lat: 35.676, lng: 139.650, ms: 518400000 },      
-      'korea': { lat: 35.101, lng: 129.035, ms: 432000000 },      
-      'taiwan': { lat: 25.033, lng: 121.565, ms: 259200000 },     
-      'singapore': { lat: 1.290, lng: 103.850, ms: 345600000 },   
-      'default': { lat: 14.599, lng: 120.984, ms: 172800000 }     
-    };
-
-    const destInput = ticketForm.destination.toLowerCase();
-    
-    let matchedRoute = routes['default'];
-    for (const key in routes) {
-      if (destInput.includes(key)) {
-        matchedRoute = routes[key];
-        break;
-      }
-    }
-
-    const newShipment = {
-      id: `EXP-${Date.now()}`,
-      ...ticketForm,
-      startLat, startLng,
-      endLat: matchedRoute.lat, 
-      endLng: matchedRoute.lng,
-      startTime: simTime, 
-      duration: matchedRoute.ms,
-      status: 'Outbound'
-    };
-
-    // 1. Immediately drop the ship on the map for that instant UI feedback
-    setActiveExports(prev => [...prev, newShipment]);
-    setShowTicketModal(false);
-    
-    // 2. Send the actual data payload to your FastAPI backend
-    try {
-      const response = await fetch('http://127.0.0.1:8000/api/ticketing/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-=======
-  // --- Simplified Submit Handler ---
-  const handleTicketSubmit = async (e) => {
-    e.preventDefault();
-    
-    try {
-      const response = await fetch('http://127.0.0.1:8000/api/ticketing/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
->>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
-        body: JSON.stringify({
-          cargo_name: ticketForm.cargo,
-          weight_kg: Number(ticketForm.weight),
-          destination_country: ticketForm.destination,
-          scale: ticketForm.scale
-        })
-      });
-
-      if (response.ok) {
-        console.log("🔥 Shipment safely locked into PostgreSQL!");
-<<<<<<< HEAD
-      } else {
-        console.error("Failed to save shipment to the database.");
-=======
-        // We no longer need to manually push to activeExports. 
-        // The fetchAllData engine will pick it up on the next 10-second tick, 
-        // or when you refresh the page!
->>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
-      }
-    } catch (error) {
-      console.error("Backend connection error:", error);
-    }
-
-<<<<<<< HEAD
-    // 3. Reset the form
-=======
-    setShowTicketModal(false);
->>>>>>> ce5af2e (feat: implement the AISStream live, Ticketing and LSTM predictive analytics)
-    setTicketForm({ cargo: '', weight: '', destination: '', scale: 'Global' }); 
-  };
 
   const handleSignOut = () => navigate('/');
 
@@ -271,13 +67,17 @@ const Dashboard = () => {
     v.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     v.type.toLowerCase().includes(searchTerm.toLowerCase())
   );
-  const dockedCount = vessels.filter(v => v.status === 'Docked').length;
-  const inboundCount = vessels.filter(v => v.status === 'Inbound').length;
-  const outboundCount = vessels.filter(v => v.status === 'Outbound').length;
   const totalCount = vessels.length;
 
   return (
-    <div className="dashboard-wrapper">
+    <div className={`dashboard-wrapper ${!isSidebarOpen ? 'sidebar-closed' : ''}`}>
+      
+      {/* FLOATING OPEN BUTTON (Only visible when sidebar is closed) */}
+      {!isSidebarOpen && (
+        <button className="floating-hamburger" onClick={() => setIsSidebarOpen(true)}>
+          ☰
+        </button>
+      )}
       
       {/* LOGOUT CONFIRMATION MODAL */}
       {showLogout && (
@@ -293,110 +93,49 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* TICKETING / EXPORT MODAL */}
-      {showTicketModal && (
-        <div className="export-overlay">
-          <div className="export-modal">
-            <div className="export-modal-header">
-              <h3>Initiate Export Logistics</h3>
-            </div>
-            
-            <form onSubmit={handleTicketSubmit} className="export-form">
-              <div className="form-group">
-                <label class="cargo">Cargo Type</label>
-                <input 
-                  type="text" required placeholder="e.g., Cavendish Bananas"
-                  value={ticketForm.cargo} onChange={e => setTicketForm({...ticketForm, cargo: e.target.value})}
-                  className="modern-input"
-                />
-              </div>
-              
-              <div className="form-row">
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label class="weight">Weight (kg)</label>
-                  <input 
-                    type="number" required placeholder="5000"
-                    value={ticketForm.weight} onChange={e => setTicketForm({...ticketForm, weight: e.target.value})}
-                    className="modern-input"
-                  />
-                </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label>Scale</label>
-                  <select 
-                    value={ticketForm.scale} onChange={e => setTicketForm({...ticketForm, scale: e.target.value})}
-                    className="modern-select"
-                  >
-                    <option>Local</option>
-                    <option>National</option>
-                    <option>Global</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Destination Port / Country</label>
-                <input 
-                  list="destination-options"
-                  type="text" required placeholder="Type or select a destination..."
-                  value={ticketForm.destination} onChange={e => setTicketForm({...ticketForm, destination: e.target.value})}
-                  className="modern-input"
-                />
-                {/* The Datalist acts as the Combobox dropdown */}
-                <datalist id="destination-options">
-                  <option value="Tokyo, Japan" />
-                  <option value="Busan, South Korea" />
-                  <option value="Taipei, Taiwan" />
-                  <option value="Singapore" />
-                  <option value="Manila, Philippines" />
-                </datalist>
-              </div>
-
-              <div className="export-modal-actions">
-                <button type="button" className="btn-cancel-modern" onClick={() => setShowTicketModal(false)}>Cancel</button>
-                <button type="submit" className="btn-confirm-modern">Confirm Route</button>
-              </div>
-            </form>
+      {/* COLLAPSIBLE SIDEBAR */}
+      <aside className={`sidebar ${!isSidebarOpen ? 'hidden' : ''}`}>
+        <div className="sidebar-header">
+          <button className="sidebar-toggle-inner" onClick={() => setIsSidebarOpen(false)}>✕</button>
+          <div className="brand">
+            <h2>Wharf<span>Intel</span></h2>
+            <p>COMMAND CENTER</p>
           </div>
         </div>
-      )}
-
-      {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="brand">
-          <h2>Wharf<span>Intel</span></h2>
-          <p>COMMAND CENTER</p>
-        </div>
+        
         <nav className="side-nav">
-          <button 
-            className={activeMenu === 'live_map' ? 'active' : ''} 
-            onClick={() => setActiveMenu('live_map')}
-          >
+          <button className={activeMenu === 'live_map' ? 'active' : ''} onClick={() => setActiveMenu('live_map')}>
             Live Map
           </button>
-          <button 
-            className={activeMenu === 'traffic' ? 'active' : ''} 
-            onClick={() => setActiveMenu('traffic')}
-          >
+          <button className={activeMenu === 'traffic' ? 'active' : ''} onClick={() => setActiveMenu('traffic')}>
             Vessel Traffic
           </button>
-          <button 
-            className={activeMenu === 'analytics' ? 'active' : ''} 
-            onClick={() => setActiveMenu('analytics')}
-          >
+          <button className={activeMenu === 'analytics' ? 'active' : ''} onClick={() => setActiveMenu('analytics')}>
             Analytics
           </button>
-          
+
+          {/* MINIMALIST RADAR SWITCH */}
+          <div className="radar-switch-container">
+            <span className="radar-text">LIVE AIS RADAR</span>
+            <label className="switch">
+              <input 
+                type="checkbox" 
+                checked={showAISTraffic} 
+                onChange={() => setShowAISTraffic(!showAISTraffic)} 
+              />
+              <span className="slider round"></span>
+            </label>
+          </div>
+
+          {/* SIMULATION LINK ROUTE */}
           <button 
-            className="btn-export" 
-            onClick={() => setShowTicketModal(true)}
-            style={{ backgroundColor: '#2ecc71', color: '#000', fontWeight: 'bold', marginTop: '20px' }}
+            className="btn-link-sim" 
+            onClick={() => navigate('/simulation')} 
           >
-            + New Export
+            🎮 Enter Simulation
           </button>
 
-          <button className="logout" onClick={() => setShowLogout(true)}>
-            Sign Out
-          </button>
+          <button className="logout" onClick={() => setShowLogout(true)}>Sign Out</button>
         </nav>
       </aside>
 
@@ -412,16 +151,13 @@ const Dashboard = () => {
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             attribution='&copy; OpenStreetMap &copy; CARTO'
           />
-
-          {/* THE SMART CAMERA */}
-          <CameraController activeExports={activeExports} />
           
-          {/* STATIC/MOCK VESSELS */}
+          {/* LIVE AIS VESSELS */}
           {vessels.map((vessel) => (
             <Marker 
               key={vessel.id} 
               position={[vessel.lat, vessel.lng]}
-              icon={createVesselIcon(vessel.status)}
+              icon={createVesselIcon(vessel.status, showAISTraffic)} 
             >
               <Popup className="custom-popup">
                 <div className="popup-header">
@@ -435,66 +171,7 @@ const Dashboard = () => {
               </Popup>
             </Marker>
           ))}
-
-          {/* SIMULATED EXPORT SHIPS */}
-          {activeExports.map((exp) => {
-            const elapsed = simTime - exp.startTime;
-            let progress = elapsed / exp.duration;
-            if (progress > 1) progress = 1; 
-            
-            const currentLat = exp.startLat + (exp.endLat - exp.startLat) * progress;
-            const currentLng = exp.startLng + (exp.endLng - exp.startLng) * progress;
-            const currentStatus = progress >= 1 ? 'Arrived' : 'Outbound';
-
-            return (
-              <Marker 
-                key={exp.id} 
-                position={[currentLat, currentLng]}
-                icon={createVesselIcon(progress >= 1 ? 'Docked' : 'Outbound')}
-              >
-                <Popup className="custom-popup">
-                  <div className="popup-header">
-                    <strong>{exp.id}</strong>
-                    <span className={`badge ${currentStatus.toLowerCase()}`}>{currentStatus}</span>
-                  </div>
-                  <div className="popup-body">
-                    <p><strong>Cargo:</strong> {exp.weight}kg {exp.cargo}</p>
-                    <p><strong>Dest:</strong> {exp.destination}</p>
-                    <p><strong>Progress:</strong> {(progress * 100).toFixed(1)}%</p>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
-          
-          {/* EXPORT ROUTES (POLYLINES) */}
-          {activeExports.map((exp) => (
-             <Polyline 
-               key={`route-${exp.id}`} 
-               positions={[[exp.startLat, exp.startLng], [exp.endLat, exp.endLng]]} 
-               pathOptions={{ color: '#2ecc71', dashArray: '5, 10', weight: 2, opacity: 0.5 }} 
-             />
-          ))}
         </MapContainer>
-
-        {/* TIME WARP CONTROLS */}
-        <div className="time-warp-container">
-          <button 
-            className={`time-btn ${simSpeed === 1 ? 'active-live' : ''}`}
-            onClick={() => setSimSpeed(1)}>
-            ▶ Live
-          </button>
-          <button 
-            className={`time-btn ${simSpeed === 60 ? 'active-fast' : ''}`}
-            onClick={() => setSimSpeed(60)}>
-            ⏩ Fast
-          </button>
-          <button 
-            className={`time-btn ${simSpeed === 3600 ? 'active-warp' : ''}`}
-            onClick={() => setSimSpeed(3600)}>
-            ⏭ Warp
-          </button>
-        </div>
 
         {/* FLOATING TRAFFIC PANEL */}
         {activeMenu === 'traffic' && (
@@ -564,7 +241,6 @@ const Dashboard = () => {
                   />
                   <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}/>
                   
-                  {/* Historical Data Line */}
                   <Line 
                     type="monotone" 
                     name="Actual Traffic"
@@ -574,7 +250,6 @@ const Dashboard = () => {
                     dot={{ r: 4, fill: '#3b82f6', strokeWidth: 0 }} 
                   />
                   
-                  {/* ML Predicted Data Line */}
                   <Line 
                     type="monotone" 
                     name="AI Forecast"
