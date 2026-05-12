@@ -1,10 +1,10 @@
 // src/pages/AuthPage.jsx
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // <-- Add this
+import { useNavigate } from 'react-router-dom';
 import './AuthStyle.css';
 
 const AuthPage = ({ initialMode, onClose }) => {
-  const navigate = useNavigate(); // <-- Initialize hook
+  const navigate = useNavigate(); 
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
   
   // Form State
@@ -18,7 +18,7 @@ const AuthPage = ({ initialMode, onClose }) => {
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // --- NEW: Password Strength Calculator ---
+  // --- Password Strength Calculator ---
   const getPasswordStrength = (pw) => {
     if (!pw) return { score: 0, label: "Enter a password", colorClass: "" };
     
@@ -31,13 +31,12 @@ const AuthPage = ({ initialMode, onClose }) => {
 
     const cap = Math.min(score, 4);
     const labels = ["Enter a password", "Weak", "Moderate", "Strong", "Very Strong"];
-    const cls = ["", "weak", "medium", "strong", "strong"]; // Maps score to CSS class
+    const cls = ["", "weak", "medium", "strong", "strong"]; 
     
     return { score: cap, label: labels[cap], colorClass: cls[cap] };
   };
 
   const strength = getPasswordStrength(password);
-  // -----------------------------------------
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -59,19 +58,30 @@ const AuthPage = ({ initialMode, onClose }) => {
       });
       
       const data = await response.json();
+      
       if (response.ok) {
         setIsSuccess(true);
         setMessage(isLogin ? "Login Successful! Redirecting..." : "Account created successfully! You can now log in.");
         
         if (isLogin) {
-          // Give them a half-second to actually see the success message
+          // 🔥 CRITICAL FIX: Save the exact username returned by the backend to browser memory!
+          // This prevents the "Stale Session" bug when switching accounts.
+          localStorage.setItem('username', data.user); 
+          
           setTimeout(() => {
             navigate('/dashboard'); 
           }, 600);
         } else {
+          // Form reset on successful registration
           setUsername("");
           setPassword("");
           setConfirmPassword("");
+          
+          // 🔥 QOL Upgrade: Auto-switch to login tab after 1.5s so they can sign in immediately
+          setTimeout(() => {
+            setIsLogin(true);
+            setMessage(""); // Clear the success message so the login form looks fresh
+          }, 1500);
         }
       } else {
         setIsSuccess(false);
@@ -139,7 +149,7 @@ const AuthPage = ({ initialMode, onClose }) => {
             </button>
           </div>
           
-          {/* --- NEW: Dynamic Strength Meter UI --- */}
+          {/* Dynamic Strength Meter UI */}
           {!isLogin && (
             <>
               <div className="strength-bar">
@@ -151,12 +161,11 @@ const AuthPage = ({ initialMode, onClose }) => {
               <div className="strength-label">{strength.label}</div>
             </>
           )}
-          {/* -------------------------------------- */}
         </div>
 
         {!isLogin && (
           <div className="form-group">
-            <label class="con-firm">Confirm Password</label>
+            <label className="con-firm">Confirm Password</label>
             <div className="input-wrap">
               <input 
                 type={showConfirm ? "text" : "password"} 

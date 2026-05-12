@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './Simulation.css';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import TopHUD from './TopHUD';
-import { INFRASTRUCTURE } from './InfrastructureData';
+
+const API_BASE = 'http://localhost:8000/api'; // 🔥 The link to your backend!
 
 const PORT_DATABASE = {
   Local: ["Panabo Wharf", "Davao City Port"],
@@ -13,350 +14,353 @@ const PORT_DATABASE = {
   Global: ["Tokyo, Japan", "Busan, South Korea", "Taipei, Taiwan", "Singapore"]
 };
 
-// 💰 DYNAMIC PRICING DATABASE
 const DESTINATION_PRICING = {
-  "Panabo Wharf": 500,
-  "Davao City Port": 800,
-  "Manila, Philippines": 5000,
-  "Cebu Port": 3500,
-  "Batangas Terminal": 4200,
-  "Tokyo, Japan": 25000,
-  "Busan, South Korea": 22000,
-  "Taipei, Taiwan": 18000,
+  "Panabo Wharf": 500, "Davao City Port": 800,
+  "Manila, Philippines": 5000, "Cebu Port": 3500,
+  "Batangas Terminal": 4200, "Tokyo, Japan": 25000,
+  "Busan, South Korea": 22000, "Taipei, Taiwan": 18000,
   "Singapore": 20000
 };
 
-// 🌪️ ENVIRONMENTAL DATA (Chaos Factor)
-const STORM_ZONES = [
-  { id: 'STORM_DELTA', lat: 13.5, lng: 127.5, radius: 250000, severity: "High" },
-  { id: 'STORM_ECHO', lat: 4.5, lng: 110.5, radius: 200000, severity: "Medium" }
+const TACTICAL_BOOSTERS = [
+  { id: 'boost_speed', name: 'Eco-Routing Algorithm', cost: 15000, desc: 'Increases final payout by 20%.' },
+  { id: 'boost_bribe', name: 'Priority Customs Clearance', cost: 25000, desc: 'Bypass port fees on next arrival.' },
+  { id: 'boost_radar', name: 'Advanced Sonar', cost: 50000, desc: 'Reveals exact storm locations.' }
 ];
 
-const createSimIcon = (status) => {
-  let colorClass = 'status-default';
-  if (status === 'Arrived') colorClass = 'status-docked';
-  if (status === 'Outbound') colorClass = 'status-outbound';
-  if (status === 'Sheltered') colorClass = 'status-sheltered'; 
+const ACADEMY_QUIZ = [
+  { q: "What is the primary functional difference between a wharf and a pier?", options: ["A wharf is flush with the shore, a pier extends into the water.", "A wharf is made of wood, a pier is concrete.", "Wharves are for freshwater only.", "Piers are only for recreation."], ans: 0 },
+  { q: "What does TEU stand for in shipping logistics?", options: ["Transit Export Unit", "Twenty-foot Equivalent Unit", "Tonnage Estimate Usage", "Total Entry Unloading"], ans: 1 },
+  { q: "Which of these is considered a 'Panamax' vessel limitation?", options: ["Must fit through the Suez Canal", "Must carry exactly 5000 TEUs", "Must fit through the Panama Canal locks", "Must be painted a specific color"], ans: 2 }
+];
 
-  const animationClass = status === 'Sheltered' ? 'paused' : '';
+const getBearing = (startLat, startLng, endLat, endLng) => {
+  const startLatRad = startLat * (Math.PI / 180);
+  const endLatRad = endLat * (Math.PI / 180);
+  const dLng = (endLng - startLng) * (Math.PI / 180);
+  const y = Math.sin(dLng) * Math.cos(endLatRad);
+  const x = Math.cos(startLatRad) * Math.sin(endLatRad) - Math.sin(startLatRad) * Math.cos(endLatRad) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * (180 / Math.PI)) + 360) % 360;
+};
+
+const createSimIcon = (status, angle) => {
+  let strokeColor = status === 'Arrived' ? '#4fffb0' : (status === 'Sheltered' ? '#f1c40f' : (status === 'Failed' ? '#ef4444' : '#2ecc71'));
+  let glowClass = status === 'Sheltered' || status === 'Failed' ? '' : 'neon-glow';
 
   return L.divIcon({
-    className: 'custom-vessel-icon',
-    html: `
-      <div class="vessel-dot ${colorClass}"></div>
-      <div class="vessel-pulse ${colorClass} ${animationClass}"></div>
-    `,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10], 
+    className: 'sim-vessel-icon',
+    html: `<div class="sim-vessel-wrapper ${glowClass}" style="transform: rotate(${angle}deg);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 22L12 2L20 22L12 16L4 22Z" fill="rgba(46, 204, 113, 0.2)" stroke="${strokeColor}" stroke-width="2" stroke-linejoin="round"/>
+        </svg></div>`,
+    iconSize: [22, 22], iconAnchor: [11, 11]
   });
 };
 
-const CameraController = ({ activeExports }) => {
+const IdleCameraController = ({ activeExports }) => {
   const map = useMap();
+  const [isIdle, setIsIdle] = useState(true);
+  const timeoutRef = useRef(null);
+
+  useMapEvents({
+    movestart: () => { setIsIdle(false); if (timeoutRef.current) clearTimeout(timeoutRef.current); },
+    moveend: () => { timeoutRef.current = setTimeout(() => setIsIdle(true), 10000); }
+  });
+
   useEffect(() => {
-    if (activeExports.length > 0) {
-      const latestExport = activeExports[activeExports.length - 1];
-      const waypoints = latestExport.waypoints;
-      if (waypoints && waypoints.length >= 2) {
-        const startNode = waypoints[0];
-        const endNode = waypoints[waypoints.length - 1];
-        const bounds = L.latLngBounds([startNode[0], startNode[1]], [endNode[0], endNode[1]]);
-        map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
+    if (isIdle && activeExports.length > 0) {
+      const latest = activeExports[activeExports.length - 1];
+      if (latest.waypoints && latest.waypoints.length >= 2) {
+        const bounds = L.latLngBounds([latest.waypoints[0]], [latest.waypoints[latest.waypoints.length - 1]]);
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [50, 50], animate: true, duration: 1.5 });
       }
     }
-  }, [activeExports, map]);
+  }, [isIdle, activeExports, map]);
   return null; 
+};
+
+const CustomSimControls = ({ isLightMode, setIsLightMode }) => {
+  const map = useMap();
+  return (
+    <div className="sim-map-controls">
+      <button className="control-btn" onClick={() => map.zoomIn(2)}>+</button>
+      <button className="control-btn" onClick={() => map.zoomOut(2)}>−</button>
+      <button className="control-btn theme-toggle-btn" onClick={() => setIsLightMode(!isLightMode)}>{isLightMode ? '🌙' : '☀️'}</button>
+    </div>
+  );
 };
 
 const Simulation = () => {
   const navigate = useNavigate();
   const portPosition = [7.284, 125.681];
-  
-  const [userId, setUserId] = useState(() => {
-    const saved = localStorage.getItem('username');
-    if (saved) return saved;
-    const prompted = prompt("Terminal Locked: Enter your Commander ID (Username) to sync simulation:");
-    if (prompted) {
-       localStorage.setItem('username', prompted);
-       return prompted;
-    }
-    return 'GUEST_COMMANDER_ALPHA';
-  });
+  const [userId] = useState(() => localStorage.getItem('username') || 'GUEST');
 
-  // --- Core Persistent State ---
-  const [resources, setResources] = useState(null); 
+  const [resources, setResources] = useState({ money: 200000, reputation: 50 }); 
   const [activeExports, setActiveExports] = useState([]);
-  const [ownedBuildings, setOwnedBuildings] = useState([]);
-  
-  // --- UI & Interaction State ---
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [activeBoosters, setActiveBoosters] = useState([]);
+
   const [simSpeed, setSimSpeed] = useState(1);
   const [showExitModal, setShowExitModal] = useState(false);
   const [showTimeMenu, setShowTimeMenu] = useState(false);
   const [activePanel, setActivePanel] = useState(''); 
   const [chaosEvent, setChaosEvent] = useState(null); 
-  const [chaosTimer, setChaosTimer] = useState(15); 
-  const [ticketForm, setTicketForm] = useState({ cargo: '', weight: '', destination: '', scale: 'Global' });
+  const [notification, setNotification] = useState(null);
+  const [isLightMode, setIsLightMode] = useState(false); 
 
-  // --- MEMORY: TIME OFFSET ---
-  const [simTimeOffset, setSimTimeOffset] = useState(() => {
-    return Number(localStorage.getItem(`wharfsim_time_offset_${userId}`)) || 0;
-  });
-  const [simTime, setSimTime] = useState(Date.now() + simTimeOffset);
+  const [showFloatingIncome, setShowFloatingIncome] = useState(false);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizFinished, setQuizFinished] = useState(false);
 
-  // --- 1. PERSISTENCE LAYER: Fetch State on Mount ---
+  const [ticketForm, setTicketForm] = useState({ cargo: '', weight: '', destination: '', scale: 'Global', vesselType: 'Panamax Cargo Ship' });
+  const [simTime, setSimTime] = useState(Date.now() + (Number(localStorage.getItem(`wharfsim_time_offset_${userId}`)) || 0));
+
+  // 🔥 THE AMNESIA CURE: Sync with Backend on Load
+  const fetchGameState = async () => {
+    if (userId === 'GUEST') return;
+    try {
+      const profRes = await fetch(`${API_BASE}/user/${userId}/profile`);
+      if (profRes.ok) {
+        const data = await profRes.json();
+        setResources({ money: data.money, reputation: data.reputation });
+        setActiveBoosters(data.active_boosters || []);
+      }
+      
+      const shipRes = await fetch(`${API_BASE}/ticketing/active?username=${userId}`);
+      if (shipRes.ok) {
+        const ships = await shipRes.json();
+        const mappedShips = ships.map(s => ({
+          id: `EXP-${s.id}`,
+          rawId: s.id, // Keep the DB ID for API calls
+          cargo: s.cargo_name, weight: s.weight_kg, destination: s.destination_country,
+          waypoints: s.route_waypoints,
+          startTime: new Date(s.departure_time).getTime(),
+          duration: s.total_duration_ms,
+          status: s.status,
+          eventHandled: s.storm_event_handled,
+          shelterCount: s.shelter_count,
+          stormTime: s.storm_time ? new Date(s.storm_time).getTime() : null
+        }));
+        setActiveExports(mappedShips);
+      }
+    } catch (e) {
+      console.error("Backend sync failed. Is FastAPI running?", e);
+    }
+  };
+
   useEffect(() => {
-    const fetchProfileData = async () => {
-      try {
-        const profileRes = await fetch(`http://127.0.0.1:8000/api/user/${userId}/profile`);
-        if (profileRes.ok) {
-          const profileData = await profileRes.json();
-          setResources({ money: profileData.money, reputation: profileData.reputation, passiveRate: profileData.passive_rate });
-          setOwnedBuildings(profileData.owned_buildings);
-        }
-      } catch (err) { console.error("Profile fetch fail:", err); }
-    };
-
-    const fetchExportsData = async () => {
-      try {
-        const exportRes = await fetch(`http://127.0.0.1:8000/api/ticketing/active?username=${userId}`);
-        if (exportRes.ok) {
-          const dbExports = await exportRes.json();
-          const recovered = dbExports.map(dbExp => {
-            const safeWaypoints = dbExp.route_waypoints && dbExp.route_waypoints.length > 0 
-              ? dbExp.route_waypoints : [[7.284, 125.681], [14.599, 120.984]];
-            return {
-              id: `EXP-DB-${dbExp.id}`,
-              cargo: dbExp.cargo_name,
-              weight: dbExp.weight_kg,
-              destination: dbExp.destination_country,
-              waypoints: safeWaypoints,
-              startTime: new Date(dbExp.departure_time).getTime(),
-              duration: 432000000, 
-              status: dbExp.status === 'Preparing' ? 'Outbound' : dbExp.status,
-              eventHandled: dbExp.storm_event_handled || false, 
-              originalDepartureTime: dbExp.departure_time 
-            };
-          });
-          setActiveExports(recovered);
-        }
-      } catch (err) { console.error("Exports fetch fail:", err); }
-    };
-
-    fetchProfileData();
-    fetchExportsData();
-
-    const pollInterval = setInterval(fetchProfileData, 10000); 
-    return () => clearInterval(pollInterval);
+    fetchGameState();
   }, [userId]);
 
-  // --- 2. Simulation Engine (WITH MEMORY) ---
+  // Active Economy Ticker
   useEffect(() => {
     const tickRateMs = 1000;
+    let tickCounter = 0; 
+
     const interval = setInterval(() => {
       const addedTime = tickRateMs * simSpeed;
-      
       setSimTime(prev => prev + addedTime);
-
-      // If warping, save the "bonus" time to localStorage so it survives a reload
-      if (simSpeed > 1) {
-        setSimTimeOffset(prev => {
-          const newOffset = prev + (addedTime - tickRateMs);
-          localStorage.setItem(`wharfsim_time_offset_${userId}`, newOffset);
-          return newOffset;
-        });
+      
+      const hasActiveShip = activeExports.some(exp => exp.status === 'Outbound');
+      if (hasActiveShip) {
+        tickCounter++;
+        if (tickCounter >= 10) {
+          setResources(prev => ({ ...prev, money: prev.money + 20 }));
+          tickCounter = 0; 
+          if (simSpeed === 1) {
+            setShowFloatingIncome(true);
+            setTimeout(() => setShowFloatingIncome(false), 900);
+          }
+        }
       }
     }, tickRateMs);
     return () => clearInterval(interval);
-  }, [simSpeed, userId]);
+  }, [simSpeed, activeExports]);
 
-  // --- 3. Live Position Calculation Helper ---
-  const calculateCurrentPos = (ship) => {
+  // Warp-Proof RNG Storm Detection
+  useEffect(() => {
+    activeExports.forEach(ship => {
+      if (ship.stormTime && simTime >= ship.stormTime && !ship.eventHandled && ship.status === 'Outbound') {
+        setSimSpeed(0); 
+        setChaosEvent(ship); 
+      }
+    });
+  }, [simTime, activeExports]);
+
+  // Add this handler function
+  const handleShipArrival = async (ship) => {
+    // 1. Optimistically lock the ship status so it doesn't trigger multiple times
+    setActiveExports(prev => prev.map(s => s.id === ship.id ? { ...s, status: 'Arrived' } : s));
+    
+    try {
+      // 2. Tell the backend we made it and ask for the payout
+      const res = await fetch(`${API_BASE}/ticketing/${ship.rawId}/arrive`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: userId })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        // 3. Update our bank account and rep!
+        setResources(prev => ({ ...prev, money: data.user_money, reputation: data.reputation }));
+        setNotification({ 
+          title: 'VOYAGE COMPLETE', 
+          message: `Cargo delivered! Bulk Payout: $${data.payout.toLocaleString()}`, 
+          type: 'success' 
+        });
+      }
+    } catch (e) {
+      console.error("Failed to process arrival payout:", e);
+    }
+  };
+
+  // 🔥 4. THE ARRIVAL WATCHER
+  // This constantly checks if any outbound ship has reached its destination time
+  useEffect(() => {
+    activeExports.forEach(ship => {
+      if (ship.status === 'Outbound') {
+        const elapsed = simTime - ship.startTime;
+        if (elapsed >= ship.duration) {
+          handleShipArrival(ship);
+        }
+      }
+    });
+  }, [simTime, activeExports]);
+
+  const calculateNavigation = (ship) => {
     const elapsed = simTime - ship.startTime;
     let progress = Math.min(elapsed / ship.duration, 1);
     const waypoints = ship.waypoints;
     const totalSegments = waypoints.length - 1;
     
-    if (progress >= 1 || totalSegments < 1) {
-      return waypoints[waypoints.length - 1];
-    }
+    if (progress >= 1 || totalSegments < 1) return { pos: waypoints[waypoints.length - 1], angle: 0 };
     
     const segmentProgress = progress * totalSegments;
     const idx = Math.floor(segmentProgress);
     const nextIdx = idx + 1;
     const lerp = segmentProgress - idx;
-    const start = waypoints[idx];
-    const end = waypoints[nextIdx];
     
-    return [
-      start[0] + (end[0] - start[0]) * lerp, 
-      start[1] + (end[1] - start[1]) * lerp
-    ];
+    const currentPos = [waypoints[idx][0] + (waypoints[nextIdx][0] - waypoints[idx][0]) * lerp, waypoints[idx][1] + (waypoints[nextIdx][1] - waypoints[idx][1]) * lerp];
+    return { pos: currentPos, angle: getBearing(currentPos[0], currentPos[1], waypoints[nextIdx][0], waypoints[nextIdx][1]) };
   };
 
-  // --- 4. Storm Detection Engine ---
-  useEffect(() => {
-    if (!resources) return; 
-
-    activeExports.forEach(ship => {
-      if (ship.status === 'Arrived' || ship.status === 'Sheltered' || ship.eventHandled) return;
-
-      const currentPos = calculateCurrentPos(ship);
-      
-      STORM_ZONES.forEach(storm => {
-        const dist = L.latLng(currentPos).distanceTo(L.latLng(storm.lat, storm.lng));
-        if (dist < storm.radius && !chaosEvent) {
-          setSimSpeed(0); 
-          setChaosEvent(ship); 
-        }
-      });
-    });
-  }, [simTime, activeExports, chaosEvent, resources]);
-
-  // --- 5. Storm Timer Logic ---
-  useEffect(() => {
-    let timerInterval = null;
-    if (chaosEvent) {
-      timerInterval = setInterval(() => {
-        setChaosTimer(prev => prev - 1);
-      }, 1000);
-    }
-
-    if (chaosTimer <= 0 && chaosEvent) {
-      clearInterval(timerInterval);
-      handleChaosChoice('SHELTER'); 
-    }
-
-    return () => clearInterval(timerInterval);
-  }, [chaosEvent, chaosTimer]);
-
-  // --- Handlers ---
-  const handleExitSimulation = () => {
-    setShowExitModal(false);
-    navigate('/dashboard'); 
-  };
-
-  const buyInfrastructure = async (item) => {
-    if (resources.money < item.cost) {
-      alert("⚠️ Insufficient Credits! Fund port upgrades via persistent exports.");
-      return;
-    }
-
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/api/user/${userId}/buy_infrastructure`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: item.id })
-      });
-      if (response.ok) {
-        const newResources = await response.json();
-        setResources(prev => ({
-          ...prev, 
-          money: newResources.money,
-          passiveRate: newResources.passive_rate
-        }));
-        setOwnedBuildings([...ownedBuildings, item.id]);
-        alert(`🎊 ${item.name} constructed persistently! Passive income increased.`);
-      }
-    } catch (err) { console.error(" buy_infrastructure fail:", err); }
-  };
-
+  // 🔥 CONNECT LAUNCH TO BACKEND & FIX FORM RESET
   const handleLaunchRoute = async (e) => {
     e.preventDefault();
     const cost = DESTINATION_PRICING[ticketForm.destination] || 0;
-    
     if (resources.money < cost) {
-      alert("❌ Insufficient persistent credits! Try a local route or save up.");
-      return;
+      return setNotification({ title: 'Launch Failed', message: "❌ Insufficient credits!", type: 'error' });
     }
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/ticketing/create', {
+      const payload = {
+        cargo_name: ticketForm.cargo,
+        weight_kg: Number(ticketForm.weight),
+        destination_country: ticketForm.destination,
+        scale: ticketForm.scale,
+        username: userId,
+        departure_time: new Date(simTime).toISOString()
+      };
+
+      const res = await fetch(`${API_BASE}/ticketing/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cargo_name: ticketForm.cargo,
-          weight_kg: Number(ticketForm.weight),
-          destination_country: ticketForm.destination,
-          scale: ticketForm.scale,
-          username: userId 
-        })
+        body: JSON.stringify(payload)
       });
-      if (response.ok) {
-        const newResources = await response.json();
-        setResources(prev => ({ ...prev, money: newResources.user_money }));
+
+      if (res.ok) {
+        await fetchGameState(); // Refresh the ocean map from the DB!
+        
+        // 🔥 THE FORM RESET YOU ASKED FOR
+        setTicketForm({ cargo: '', weight: '', destination: '', scale: 'Global', vesselType: 'Panamax Cargo Ship' });
         setActivePanel(''); 
-        setTicketForm({ cargo: '', weight: '', destination: '', scale: 'Global' });
       }
-    } catch (err) { console.error("Ship creation failure:", err); }
+    } catch (e) {
+      setNotification({ title: 'System Error', message: "Failed to connect to Command Center Server.", type: 'error' });
+    }
   };
 
+  // 🔥 CONNECT CHAOS RESOLUTION TO BACKEND
   const handleChaosChoice = async (choice) => {
     const ship = chaosEvent;
     if (!ship) return;
     
-    let moneyChange = 0;
-    let repChange = 0;
-    let message = "";
-    
-    if (choice === 'PUSH') {
-      const success = Math.random() < 0.2; 
-      if (success) {
-        moneyChange = 15000;
-        repChange = 10;
-        message = "SUCCESS! Your crew persistently navigated the storm. Hazard Bonus awarded!";
-      } else {
-        moneyChange = -30000;
-        repChange = -15;
-        message = "DISASTER! Hull breach detected. Persistently deducted repair costs.";
-      }
-    } else {
-      moneyChange = -5000;
-      message = "SAFE PLAY. RETREATING TO ORIGIN PORT. Emergency fuel penalty applied.";
-      setActiveExports(prev => prev.map(s => s.id === ship.id ? { ...s, needsRelaunch: true, status: 'Sheltered' } : s));
-    }
-
-    setResources(prev => ({ 
-      ...prev, 
-      money: prev.money + moneyChange, 
-      reputation: Math.max(0, Math.min(100, prev.reputation + repChange)) 
-    }));
-    
-    setActiveExports(prev => prev.map(s => s.id === ship.id ? { ...s, eventHandled: true } : s));
-    
-    alert(message);
-    setChaosEvent(null);
-    setChaosTimer(15);
-    setSimSpeed(1); 
-  };
-
-  const handleRelaunchRoute = async (shipId, destination) => {
-    const relaunchCost = (DESTINATION_PRICING[destination] || 0) / 2;
-    if (resources.money < relaunchCost) {
-      alert("❌ Insufficient credits to relaunch persistently!");
-      return;
-    }
-    
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/ticketing/${shipId.split('-')[2]}/relaunch`, {
+      const res = await fetch(`${API_BASE}/ticketing/${ship.rawId}/resolve_event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: userId, cost: relaunchCost })
+        body: JSON.stringify({ username: userId, choice: choice })
       });
-      if (response.ok) {
-        const result = await response.json();
-        setResources(prev => ({ ...prev, money: result.user_money }));
-        // Ensure to adjust the startTime so the local simTimeOffset doesn't instantly push it forward again
-        const newStartTime = new Date(result.departure_time).getTime() + simTimeOffset;
-        setActiveExports(prev => prev.map(s => s.id === shipId ? { ...s, needsRelaunch: false, status: 'Outbound', startTime: newStartTime } : s));
+
+      if (res.ok) {
+        const data = await res.json();
+        await fetchGameState(); // Sync UI with the new DB states
+        setChaosEvent(null); 
+        setSimSpeed(1);
+        
+        // Show proper notification based on backend decision
+        if (data.status === 'Failed') {
+          setNotification({ title: "CONTRACT TERMINATED", message: "FAILED EXPORT: Clients will not tolerate a second delay.", type: "error" });
+        } else if (data.status === 'Sheltered') {
+          setNotification({ title: "SAFE RETREAT", message: "Emergency fuel penalty applied. Route must be relaunched.", type: "info" });
+        } else {
+          setNotification({ title: "STORM NAVIGATED", message: "Decision logged. Continuing voyage.", type: "success" });
+        }
       }
-    } catch (err) { console.error("relaunch failure:", err); }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const togglePanel = (panelName) => {
-    setActivePanel(prev => prev === panelName ? '' : panelName);
-    setShowTimeMenu(false); 
+  // 🔥 CONNECT BOOSTERS TO BACKEND
+  const activateBooster = async (item) => {
+    if (resources.money < item.cost) return setNotification({ title: 'Declined', message: "Insufficient Credits.", type: 'error' });
+    
+    try {
+      const res = await fetch(`${API_BASE}/user/${userId}/activate_booster`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: item.id })
+      });
+      if (res.ok) {
+        await fetchGameState();
+        setNotification({ title: 'Booster Active', message: `⚡ ${item.name} activated!`, type: 'success' });
+      }
+    } catch (e) {}
   };
+
+  const handleRelaunchRoute = async (shipId, destination, rawId) => {
+    try {
+      await fetch(`${API_BASE}/ticketing/${rawId}/relaunch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: userId, departure_time: new Date(simTime).toISOString() })
+      });
+      await fetchGameState();
+    } catch (e) {}
+  };
+
+  const answerQuiz = (selectedIndex) => {
+    if (selectedIndex === ACADEMY_QUIZ[quizIndex].ans) setQuizScore(prev => prev + 1);
+    if (quizIndex + 1 < ACADEMY_QUIZ.length) {
+      setQuizIndex(prev => prev + 1);
+    } else {
+      setQuizFinished(true);
+      const passed = quizScore + (selectedIndex === ACADEMY_QUIZ[quizIndex].ans ? 1 : 0) >= 2;
+      if (passed) {
+        // You'll want to add a backend endpoint for this later to prevent free money exploits!
+        setResources(prev => ({ ...prev, money: prev.money + 50000 }));
+        setNotification({ title: 'Academy Passed', message: "🎓 Excellent work Commander! +$50,000 Grant awarded.", type: 'success' });
+      } else {
+        setNotification({ title: 'Academy Failed', message: "Review your maritime logistics and try again tomorrow.", type: 'error' });
+      }
+    }
+  };
+
+  const togglePanel = (panelName) => { setActivePanel(prev => prev === panelName ? '' : panelName); setShowTimeMenu(false); };
+  const currentRouteCost = DESTINATION_PRICING[ticketForm.destination] || 0;
+  const isFleetDeployed = activeExports.some(exp => exp.status !== 'Arrived' && exp.status !== 'Failed');
 
   const getOptions = () => {
     if (ticketForm.scale === 'Local') return PORT_DATABASE.Local;
@@ -364,99 +368,99 @@ const Simulation = () => {
     return [...PORT_DATABASE.Local, ...PORT_DATABASE.National, ...PORT_DATABASE.Global];
   };
 
-  if (!resources) {
-    return (
-      <div className="sim-loading-view" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', background: '#0a0c10', color: '#fff', fontFamily: 'monospace' }}>
-        <h2>Wharf<span style={{color: '#2ecc71'}}>Sim</span></h2>
-        <p>Loading authoritative commander data for {userId}...</p>
-      </div>
-    );
-  }
-
-  const currentRouteCost = DESTINATION_PRICING[ticketForm.destination] || 0;
-
   return (
-    <div className="sim-wrapper">
-      
-      {/* TOP-LEFT EXIT HAMBURGER */}
-      <button className="sim-exit-btn" onClick={() => setShowExitModal(true)}>
-        <span className="hamburger-icon">☰</span>
-      </button>
+    <div className={`sim-wrapper ${isLightMode ? 'light-mode' : ''}`}>
+      <button className="sim-exit-btn" onClick={() => setShowExitModal(true)}><span className="hamburger-icon">☰</span></button>
+
+      <div style={{position: 'absolute', top: '90px', left: '45%', transform: 'translateX(-50%)', zIndex: 3001}}>
+         {showFloatingIncome && <div className="floating-income-text">+$20 / 10sec</div>}
+      </div>
 
       <TopHUD resources={resources} />
 
-      {/* EXIT CONFIRMATION MODAL */}
+      {notification && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className={`custom-notification ${notification.type}`}>
+            <div className="notif-header"><span className="notif-icon">{notification.type === 'success' ? '✅' : '⚠️'}</span><h3>{notification.title}</h3></div>
+            <p className="notif-message">{notification.message}</p>
+            <button className="notif-ack-btn" onClick={() => setNotification(null)}>COMMAND ACKNOWLEDGED</button>
+          </div>
+        </div>
+      )}
+
       {showExitModal && (
         <div className="modal-overlay">
           <div className="confirmation-modal">
             <h3>Exit Simulation?</h3>
-            <p>Your port progress is persistently saved.</p>
             <div className="modal-actions">
               <button className="btn-cancel" onClick={() => setShowExitModal(false)}>Cancel</button>
-              <button className="btn-confirm-exit" onClick={handleExitSimulation}>Confirm Exit</button>
+              <button className="btn-confirm-exit" onClick={() => navigate('/dashboard')}>Confirm Exit</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* CHAOS EVENT MODAL (THE STORM DETECTED) */}
       {chaosEvent && (
         <div className="modal-overlay">
           <div className="chaos-modal">
             <div className="modal-shake-chaos">
-              <h1 className="warning-title" style={{color: '#f1c40f', marginBottom: '10px'}}>⚠️ MAYDAY: STORM DETECTED</h1>
-              <p style={{color: '#fff', marginBottom: '20px'}}>Persistent Export <strong>{chaosEvent.id}</strong> has entered a high-risk storm zone.</p>
-              
-              <div className="storm-odds-bar" style={{display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: '#94a3b8', marginBottom: '30px'}}>
-                <span className="label-fail">80% RISK</span>
-                <span className="label-success">20% SUCCESS</span>
-              </div>
-              
+              <h1 style={{color: '#ffc107'}} className="warning-title">⚠️ MAYDAY: STORM DETECTED</h1>
+              <p style={{color: '#e4a11b', marginBottom: '20px'}}>Export <strong>{chaosEvent.id}</strong> hit a severe storm.</p>
+              <div className="storm-odds-bar"><span className="label-fail">80% RISK</span><span className="label-success">20% SUCCESS</span></div>
               <div className="chaos-actions">
                 <button className="btn-push" onClick={() => handleChaosChoice('PUSH')}>
-                  PUSH THROUGH (Risk 80% Failure)
-                  <span style={{fontSize: '12px', fontWeight: 'normal', marginTop: '5px', display: 'block'}}>Hazard Bonus or Heavy Repairs ($30k)</span>
+                  PUSH THROUGH <span className="btn-subtext">Hazard Bonus or -20% Reputation</span>
                 </button>
                 <button className="btn-shelter" onClick={() => handleChaosChoice('SHELTER')}>
-                  SEEK SHELTER (Safe Retreat)
-                  <span style={{fontSize: '12px', fontWeight: 'normal', marginTop: '5px', display: 'block'}}>Costs $5k, Resets Progress persistently</span>
+                  SEEK SHELTER <span className="btn-subtext">Costs $5k. Second shelter = Failed Export.</span>
                 </button>
-              </div>
-              
-              <div className="timer-display-chaos" style={{marginTop: '25px', color: '#f1c40f', fontWeight: 'bold', fontSize: '18px'}}>
-                DEFAULT: SEEK SHELTER in <span className="timer-count">{chaosTimer}s</span>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* RIGHT-SIDE PANEL: PORT UPGRADES */}
+      {activePanel === 'tasks' && (
+        <div className="floating-side-panel" style={{width: '380px'}}>
+          <div className="panel-header">
+            <h3>Maritime Academy</h3>
+            <span className="badge docked">Daily Grant: $50k</span>
+          </div>
+          {!quizFinished ? (
+            <div className="quiz-container">
+              <div className="quiz-progress">Question {quizIndex + 1} of {ACADEMY_QUIZ.length}</div>
+              <h4 className="quiz-question">{ACADEMY_QUIZ[quizIndex].q}</h4>
+              <div className="quiz-options">
+                {ACADEMY_QUIZ[quizIndex].options.map((opt, i) => (
+                  <button key={i} className="quiz-opt-btn" onClick={() => answerQuiz(i)}>{opt}</button>
+                ))}
+              </div>
+            </div>
+          ) : (
+             <div className="quiz-container" style={{textAlign: 'center'}}>
+                <h4>Academy Completed</h4>
+                <p>Score: {quizScore} / {ACADEMY_QUIZ.length}</p>
+                <button className="buy-btn-mini" onClick={() => {setQuizFinished(false); setQuizIndex(0); setQuizScore(0);}} style={{marginTop: '15px'}}>Retake Exam</button>
+             </div>
+          )}
+        </div>
+      )}
+
       {activePanel === 'upgrades' && (
         <div className="floating-side-panel">
-          <div className="panel-header">
-            <h3>Infrastructure Hub</h3>
-            <span className="vessel-count">{ownedBuildings.length} Built</span>
-          </div>
+          <div className="panel-header"><h3>Tactical Boosters</h3><span className="vessel-count">Operations</span></div>
           <div className="traffic-list">
-            {INFRASTRUCTURE.map(item => {
-              const isOwned = ownedBuildings.includes(item.id);
+            {TACTICAL_BOOSTERS.map(item => {
+              const isActive = activeBoosters.some(b => b.id === item.id);
               return (
-                <div className={`upgrade-card ${isOwned ? 'owned' : ''}`} key={item.id}>
+                <div className={`upgrade-card ${isActive ? 'owned' : ''}`} key={item.id}>
                   <div className="tc-top">
                     <h4>{item.name}</h4>
-                    <span className={`badge ${isOwned ? 'docked' : 'outbound'}`}>
-                      {isOwned ? 'BUILT' : `$${item.cost.toLocaleString()}`}
-                    </span>
+                    <span className={`badge ${isActive ? 'docked' : 'outbound'}`}>{isActive ? 'ACTIVE' : `$${item.cost.toLocaleString()}`}</span>
                   </div>
-                  <p className="upgrade-desc">{item.description}</p>
+                  <p className="upgrade-desc">{item.desc}</p>
                   <div className="upgrade-actions">
-                    <span className="income-tag">+{item.income}/tick</span>
-                    {!isOwned && (
-                      <button className="buy-btn-mini" disabled={resources.money < item.cost} onClick={() => buyInfrastructure(item)}>
-                        Buy Now
-                      </button>
-                    )}
+                    {!isActive && <button className="buy-btn-mini" disabled={resources.money < item.cost} onClick={() => activateBooster(item)}>Activate</button>}
                   </div>
                 </div>
               );
@@ -465,17 +469,15 @@ const Simulation = () => {
         </div>
       )}
 
-      {/* RIGHT-SIDE PANEL: INITIATE EXPORT */}
       {activePanel === 'export' && (
         <div className="floating-side-panel">
-          <div className="panel-header">
-            <h3>Deploy Cargo</h3>
-          </div>
+          <div className="panel-header"><h3>Deploy Cargo</h3></div>
           <form onSubmit={handleLaunchRoute} className="sim-export-form">
             <div className="form-group">
               <label>Cargo Type</label>
               <input type="text" required placeholder="e.g., Cavendish Bananas" value={ticketForm.cargo} onChange={e => setTicketForm({...ticketForm, cargo: e.target.value})} className="modern-input" />
             </div>
+            
             <div className="form-row">
               <div className="form-group" style={{ flex: 1 }}>
                 <label>Weight (kg)</label>
@@ -490,121 +492,100 @@ const Simulation = () => {
                 </select>
               </div>
             </div>
+
+            <div className="form-group">
+              <label>Vessel Class</label>
+              <select value={ticketForm.vesselType} onChange={e => setTicketForm({...ticketForm, vesselType: e.target.value})} className="modern-select">
+                <option value="Panamax Cargo Ship">Panamax Cargo Ship</option>
+                <option value="RoRo Ferry">RoRo Ferry</option>
+                <option value="LCT (Landing Craft)">LCT (Landing Craft)</option>
+              </select>
+            </div>
+
             <div className="form-group">
               <label>Destination Port</label>
               <input list="filtered-destinations" type="text" required placeholder="Select destination..." value={ticketForm.destination} onChange={e => setTicketForm({...ticketForm, destination: e.target.value})} className="modern-input" />
               <datalist id="filtered-destinations">{getOptions().map(port => <option key={port} value={port} />)}</datalist>
             </div>
             
-            <div className="cost-tag" style={{ marginTop: '15px' }}>
-              Route Cost: ${currentRouteCost > 0 ? currentRouteCost.toLocaleString() : "0"}
-            </div>
-
-            <button type="submit" className="btn-launch-sim" disabled={resources.money < currentRouteCost || currentRouteCost === 0}>
-              Launch Route
+            <div className="cost-tag">Route Cost: ${currentRouteCost > 0 ? currentRouteCost.toLocaleString() : "0"}</div>
+            
+            <button type="submit" className={`btn-launch-sim ${isFleetDeployed ? 'state-deployed' : (resources.money < currentRouteCost ? 'state-broke' : '')}`} disabled={resources.money < currentRouteCost || currentRouteCost === 0 || isFleetDeployed}>
+              {isFleetDeployed ? "⏳ FLEET EN ROUTE (AWAIT/WARP)" : "Launch Route"}
             </button>
           </form>
         </div>
       )}
 
-      {/* BOTTOM ACTION BAR */}
       <div className="sim-bottom-bar">
+        <button className={`action-btn ${activePanel === 'upgrades' ? 'active-green' : ''}`} onClick={() => togglePanel('upgrades')}>🚀 Boosters</button>
+        <button className={`action-btn ${activePanel === 'export' ? 'active-green' : ''}`} onClick={() => togglePanel('export')}>📦 Export</button>
+        <button className={`action-btn ${activePanel === 'tasks' ? 'active-green' : ''}`} onClick={() => togglePanel('tasks')}>📚 Tasks</button>
         
-        <button 
-          className={`action-btn ${activePanel === 'upgrades' ? 'active-green' : ''}`} 
-          onClick={() => togglePanel('upgrades')}
-        >
-          🏗️ Port Upgrades
-        </button>
-
-        <button 
-          className={`action-btn ${activePanel === 'export' ? 'active-green' : ''}`} 
-          onClick={() => togglePanel('export')}
-        >
-          📦 Initiate Export
-        </button>
-
-        {/* UPDATED TIME POPOVER CONTROLS */}
         <div className="time-popover-wrapper">
           {showTimeMenu && (
             <div className="time-menu-dropdown">
               <button className={`time-opt-btn ${simSpeed === 1 ? 'selected' : ''}`} onClick={() => { setSimSpeed(1); setShowTimeMenu(false); }}>▶ Normal</button>
-              <button className={`time-opt-btn ${simSpeed === 3600 ? 'selected' : ''}`} onClick={() => { setSimSpeed(3600); setShowTimeMenu(false); }}>⏩ Fast (3600x)</button>
-              <button className={`time-opt-btn ${simSpeed === 21600 ? 'selected' : ''}`} onClick={() => { setSimSpeed(21600); setShowTimeMenu(false); }}>⏭ Warp (21600x)</button>
+              <button className={`time-opt-btn ${simSpeed === 3600 ? 'selected' : ''}`} onClick={() => { setSimSpeed(3600); setShowTimeMenu(false); }}>⏩ Fast</button>
+              <button className={`time-opt-btn ${simSpeed === 21600 ? 'selected' : ''}`} onClick={() => { setSimSpeed(21600); setShowTimeMenu(false); }}>⏭ Warp</button>
             </div>
           )}
           <button className={`action-btn time-toggle ${showTimeMenu ? 'active-green' : ''}`} onClick={() => { setShowTimeMenu(!showTimeMenu); setActivePanel(''); }}>
             ⏱️ Time: {simSpeed}x {showTimeMenu ? '▼' : '▲'}
           </button>
         </div>
-
-        <button className="action-btn disabled">
-          ☁️ Environment
-        </button>
-        
       </div>
 
-      {/* FULLSCREEN MAP */}
       <main className="sim-map-fullscreen">
-        <MapContainer center={portPosition} zoom={14} className="leaflet-container" zoomControl={false}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CARTO' />
-          <CameraController activeExports={activeExports} />
-          
-          {STORM_ZONES.map(storm => (
-            <Circle 
-              key={storm.id}
-              center={[storm.lat, storm.lng]}
-              radius={storm.radius}
-              pathOptions={{ color: '#f1c40f', fillColor: '#f1c40f', fillOpacity: 0.15, dashArray: '10, 10' }}
-            />
-          ))}
+        <MapContainer center={portPosition} zoom={14} className="leaflet-container" zoomControl={false} zoomSnap={2} zoomDelta={2}>
+          <TileLayer url={isLightMode ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"} attribution='&copy; CARTO' />
+          <IdleCameraController activeExports={activeExports} />
+          <CustomSimControls isLightMode={isLightMode} setIsLightMode={setIsLightMode} />
 
           {activeExports.map((exp) => {
             const elapsed = simTime - exp.startTime;
-            let progress = elapsed / exp.duration;
-            if (progress > 1) progress = 1; 
+            let progress = Math.min(elapsed / exp.duration, 1);
+            let currentStatus = exp.status;
+            if (progress >= 1 && currentStatus !== 'Failed') currentStatus = 'Arrived';
             
-            const currentStatus = exp.needsRelaunch ? 'Sheltered' : (progress >= 1 ? 'Arrived' : 'Outbound');
-            const currentPos = exp.needsRelaunch ? exp.waypoints[0] : calculateCurrentPos(exp);
+            const isHalted = currentStatus === 'Sheltered' || currentStatus === 'Failed';
+            const nav = isHalted ? { pos: exp.waypoints[0], angle: 0 } : calculateNavigation(exp);
 
             return (
-              <Marker key={exp.id} position={currentPos} icon={createSimIcon(currentStatus)}>
-                <Popup className="custom-popup">
-                  <div className="popup-header">
-                    <strong>{exp.id}</strong>
-                    <span className={`badge ${currentStatus.toLowerCase()}`}>{currentStatus}</span>
-                  </div>
-                  <div className="popup-body">
-                    <p>Cargo: {exp.weight}kg</p>
-                    <p>Dest: {exp.destination}</p>
-                    {currentStatus === 'Sheltered' ? (
-                      <div className="relaunch-container">
-                        <p style={{ color: '#f1c40f', fontSize: '11px', fontWeight: 'bold' }}>PROGRESS RESET DUE TO STORM</p>
-                        <button 
-                          className="btn-launch-sim" 
-                          style={{ margin: '10px 0', fontSize: '12px', padding: '8px' }}
-                          onClick={() => handleRelaunchRoute(exp.id, exp.destination)}
-                          disabled={resources.money < (DESTINATION_PRICING[exp.destination] / 2)}
-                        >
-                          Relaunch (${(DESTINATION_PRICING[exp.destination] / 2).toLocaleString()})
-                        </button>
-                      </div>
-                    ) : (
-                      <p>Progress: {(progress * 100).toFixed(1)}%</p>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
+              <React.Fragment key={exp.id}>
+                {/* 🔥 THE DASHED ROUTE LINE YOU WANTED */}
+                {exp.waypoints && exp.waypoints.length > 0 && (
+                  <Polyline 
+                    positions={exp.waypoints} 
+                    pathOptions={{ color: '#2ecc71', dashArray: '5, 10', weight: 2, opacity: 0.6 }} 
+                  />
+                )}
+
+                <Marker position={nav.pos} icon={createSimIcon(currentStatus, nav.angle)}>
+                  <Popup className={`custom-popup ${isLightMode ? 'light-popup' : 'dark-popup'}`}>
+                    <div className="popup-header">
+                      <strong>{exp.id}</strong><span className={`badge ${currentStatus.toLowerCase()}`}>{currentStatus}</span>
+                    </div>
+                    <div className="popup-body">
+                      {currentStatus === 'Sheltered' ? (
+                        <div className="relaunch-container">
+                          <p className="relaunch-warning-text">STRIKE 1: SHELTERED</p>
+                          <button className="btn-launch-sim relaunch-btn" onClick={() => handleRelaunchRoute(exp.id, exp.destination, exp.rawId)}>Relaunch</button>
+                        </div>
+                      ) : currentStatus === 'Failed' ? (
+                        <p style={{color: '#ef4444', fontWeight: 'bold'}}>CONTRACT TERMINATED</p>
+                      ) : (
+                        <p>Progress: {(progress * 100).toFixed(1)}%</p>
+                      )}
+                    </div>
+                  </Popup>
+                </Marker>
+              </React.Fragment>
             );
           })}
-          
-          {activeExports.map((exp) => (
-             <Polyline key={`route-${exp.id}`} positions={exp.waypoints} pathOptions={{ color: '#2ecc71', dashArray: '5, 10', weight: 2, opacity: 0.5 }} />
-          ))}
         </MapContainer>
       </main>
     </div>
   );
 };
-
 export default Simulation;

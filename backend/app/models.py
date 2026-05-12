@@ -15,9 +15,12 @@ class User(Base):
     # --- PERSISTENT PROGRESS FIELDS ---
     money = Column(Float, default=200000.0)
     reputation = Column(Integer, default=50)
-    # Stores list of IDs like ["solar_grid", "crane_auto"]
-    owned_buildings = Column(JSON, default=[])
-    # Timestamp of the last time income was "collected" or profile was fetched
+    
+    # Stores list of active boosters with expiration times
+    # Example: [{"id": "boost_radar", "expiresAt": "2026-05-12T14:30:00"}]
+    active_boosters = Column(JSON, default=[])
+    
+    # Timestamp of the last time income was collected
     last_income_collection = Column(DateTime, default=datetime.utcnow)
 
     shipments = relationship("Shipment", back_populates="owner")
@@ -32,12 +35,15 @@ class Shipment(Base):
     destination_country = Column(String)
     scale = Column(String) 
     
-    # STATUS: "Preparing", "Outbound", "Arrived", "Sheltered"
+    # STATUS: "Preparing", "Outbound", "Arrived", "Sheltered", "Failed"
     status = Column(String, default="Preparing")
     departure_time = Column(DateTime, default=datetime.utcnow)
     route_waypoints = Column(JSON, default=[])
     
-    # Track if this ship has already triggered a storm event
+    # --- CHAOS ENGINE & TWO-STRIKE SYSTEM ---
+    total_duration_ms = Column(Float, default=432000000.0)
+    storm_time = Column(DateTime, nullable=True)
+    shelter_count = Column(Integer, default=0)
     storm_event_handled = Column(Boolean, default=False)
 
     owner = relationship("User", back_populates="shipments")

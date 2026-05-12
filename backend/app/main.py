@@ -7,7 +7,8 @@ from typing import List, Optional
 import asyncio
 import websockets
 import json
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 
 from . import models, database, pathfinder
 from .database import engine, get_db, Base
@@ -21,7 +22,7 @@ app = FastAPI(title="WharfIntel Command Center API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,13 +37,13 @@ DESTINATION_PRICING = {
     "Singapore": 20000
 }
 
-INFRA_INCOME = {
-    "solar_grid": 150,
-    "crane_auto": 400,
-    "duty_free": 1200
+BOOSTER_PRICING = {
+    "boost_speed": 15000,  # Eco-Routing Algorithm (formerly Speed)
+    "boost_bribe": 25000,  # Priority Customs Clearance (formerly Bribe)
+    "boost_radar": 50000   # Advanced Sonar
 }
 
-# --- AISStream Live Traffic Engine (Operational Side) ---
+# --- AISStream Live Traffic Engine ---
 LIVE_VESSELS = {}
 
 async def fetch_ais_stream():
@@ -95,7 +96,8 @@ class ShipmentCreate(BaseModel):
     weight_kg: int
     destination_country: str
     scale: str
-    username: str # Required to link to account
+    username: str
+    departure_time: Optional[str] = None
 
 # --- AUTH ENDPOINTS ---
 @app.post("/register")
@@ -115,34 +117,29 @@ def login(user: UserAuth, db: Session = Depends(get_db)):
     return {"message": "Login successful", "user": db_user.username}
 
 # --- SIMULATION AUTHORITATIVE API ---
-
 @app.get("/api/user/{username}/profile")
 def get_user_profile(username: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="Commander not found")
 
-    # PASSIVE INCOME ENGINE: Calculate earnings while user was offline
+    # Clean up expired boosters before returning profile
     now = datetime.utcnow()
-    seconds_elapsed = (now - user.last_income_collection).total_seconds()
-    
-    # Calculate current rate
-    active_rate = 50 + sum(INFRA_INCOME.get(b, 0) for b in user.owned_buildings)
-    
-    # Ticks every 5 seconds
-    ticks = int(seconds_elapsed // 5)
-    if ticks > 0:
-        earned = ticks * active_rate
-        user.money += earned
-        user.last_income_collection = now
+    valid_boosters = []
+    for b in user.active_boosters:
+        expires = datetime.fromisoformat(b["expiresAt"])
+        if now < expires:
+            valid_boosters.append(b)
+            
+    if len(valid_boosters) != len(user.active_boosters):
+        user.active_boosters = valid_boosters
         db.commit()
 
     return {
         "username": user.username,
         "money": user.money,
         "reputation": user.reputation,
-        "owned_buildings": user.owned_buildings,
-        "passive_rate": active_rate
+        "active_boosters": user.active_boosters
     }
 
 @app.get("/api/vessels/active")
@@ -152,6 +149,7 @@ def get_live_radar():
 @app.get("/api/ticketing/active")
 def get_user_exports(username: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == username).first()
+    if not user: return []
     return db.query(Shipment).filter(Shipment.user_id == user.id).all()
 
 @app.post("/api/ticketing/create")
@@ -162,8 +160,23 @@ def initiate_export(ticket: ShipmentCreate, db: Session = Depends(get_db)):
     if user.money < cost:
         raise HTTPException(status_code=400, detail="Insufficient persistent credits")
 
-    # Generate persistent route waypoints via pathfinder
+    start_time_str = ticket.departure_time
+    departure_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00')) if start_time_str else datetime.utcnow()
+
     smart_route = pathfinder.plot_smart_course("DAVAO_PORT", ticket.destination_country)
+    
+    # 🌪️ THE BACKEND DICE ROLL FOR STORMS
+    total_duration = 432000000.0
+    generated_storm_time = None
+    
+    # Check if they have the Advanced Sonar booster active (prevents random storms)
+    has_sonar = any(b["id"] == "boost_radar" for b in user.active_boosters)
+    
+    #if not has_sonar and random.random() < 0.40:
+    if True: # ⚠️ 100% STORM TEST MODE ACTIVE ⚠️
+        impact_offset_percent = 0.2 + (random.random() * 0.6)
+        offset_seconds = (total_duration / 1000) * impact_offset_percent
+        generated_storm_time = departure_time + timedelta(seconds=offset_seconds)
     
     new_shipment = Shipment(
         user_id=user.id,
@@ -172,6 +185,10 @@ def initiate_export(ticket: ShipmentCreate, db: Session = Depends(get_db)):
         destination_country=ticket.destination_country,
         scale=ticket.scale,
         route_waypoints=smart_route,
+        departure_time=departure_time,
+        total_duration_ms=total_duration,
+        storm_time=generated_storm_time,
+        shelter_count=0,
         status="Outbound"
     )
     
@@ -179,45 +196,124 @@ def initiate_export(ticket: ShipmentCreate, db: Session = Depends(get_db)):
     db.add(new_shipment)
     db.commit()
     db.refresh(new_shipment)
-    return {"user_money": user.money, "shipment_id": new_shipment.id}
+    return {"user_money": user.money, "shipment_id": new_shipment.id, "storm_time": generated_storm_time}
 
 @app.post("/api/ticketing/{ship_id}/relaunch")
-def relaunch_shipment(ship_id: int, db: Session = Depends(get_db)):
+def relaunch_shipment(ship_id: int, data: dict, db: Session = Depends(get_db)):
     ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
-    user = ship.owner
-    
-    # 50% cost rule for relaunch
+    user = db.query(User).filter(User.username == data.get("username")).first()
     relaunch_cost = DESTINATION_PRICING.get(ship.destination_country, 0) / 2
 
     if user.money < relaunch_cost:
         raise HTTPException(status_code=400, detail="Insufficient credits for relaunch")
 
+    start_time_str = data.get("departure_time")
+    ship.departure_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00')) if start_time_str else datetime.utcnow()
+    
     user.money -= relaunch_cost
     ship.status = "Outbound"
-    ship.departure_time = datetime.utcnow() # Resets progress AUTHORITATIVELY to 0
-    ship.storm_event_handled = False # Reset storm trigger
+    ship.storm_event_handled = False 
     
+    # Reroll storm chance on relaunch
+    has_sonar = any(b["id"] == "boost_radar" for b in user.active_boosters)
+    if not has_sonar and random.random() < 0.40:
+        impact_offset_percent = 0.2 + (random.random() * 0.6)
+        offset_seconds = (ship.total_duration_ms / 1000) * impact_offset_percent
+        ship.storm_time = ship.departure_time + timedelta(seconds=offset_seconds)
+    else:
+        ship.storm_time = None
+
     db.commit()
     return {"user_money": user.money, "departure_time": ship.departure_time}
 
-@app.post("/api/user/{username}/buy_infrastructure")
-def buy_infrastructure(username: str, data: dict, db: Session = Depends(get_db)):
+@app.post("/api/ticketing/{ship_id}/resolve_event")
+def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
+    ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
+    if not ship: 
+        raise HTTPException(status_code=404, detail="Ship not found")
+        
+    user = db.query(User).filter(User.username == data.get("username")).first()
+    choice = data.get("choice")
+    
+    # --- AUTHORITATIVE RESOLUTION LOGIC ---
+    if choice == 'SHELTER':
+        ship.shelter_count += 1
+        if ship.shelter_count >= 2:
+            # STRIKE TWO: Contract Terminated
+            ship.status = "Failed"
+            user.money -= 10000
+            user.reputation -= 10
+        else:
+            # STRIKE ONE: Sheltered
+            ship.status = "Sheltered"
+            user.money -= 5000
+            
+    elif choice == 'PUSH':
+        success = random.random() < 0.20 # 20% Success Rate
+        if success:
+            user.money += 15000
+            user.reputation += 10
+        else:
+            user.money -= 30000
+            user.reputation -= 20
+            
+    # Clamp reputation bounds
+    user.reputation = max(0, min(100, user.reputation))
+    ship.storm_event_handled = True
+    
+    db.commit()
+    return {"status": ship.status, "user_money": user.money, "reputation": user.reputation}
+
+@app.post("/api/ticketing/{ship_id}/arrive")
+def resolve_arrival(ship_id: int, data: dict, db: Session = Depends(get_db)):
+    ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
+    user = db.query(User).filter(User.username == data.get("username")).first()
+    
+    # Prevent double-payouts if the frontend accidentally sends two requests
+    if ship.status == "Arrived":
+        return {"message": "Already processed", "user_money": user.money}
+        
+    cost = DESTINATION_PRICING.get(ship.destination_country, 0)
+    
+    # 🔥 THE BULK PAYOUT: 1.5x the route cost (e.g., 20k -> 30k)
+    payout = int(cost * 1.5)
+    
+    # If they have the Eco-Routing booster, give them an extra 20% bonus!
+    has_eco = any(b["id"] == "boost_speed" for b in user.active_boosters)
+    if has_eco:
+        payout = int(payout * 1.2)
+        
+    user.money += payout
+    
+    # Small reputation bump for a successful delivery
+    user.reputation = min(100, user.reputation + 2) 
+    ship.status = "Arrived"
+    
+    db.commit()
+    return {"user_money": user.money, "payout": payout, "reputation": user.reputation}
+
+@app.post("/api/user/{username}/activate_booster")
+def activate_booster(username: str, data: dict, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == username).first()
     item_id = data.get("item_id")
-    
-    infra_costs = {"solar_grid": 30000, "crane_auto": 85000, "duty_free": 150000}
-    cost = infra_costs.get(item_id, 999999)
+    cost = BOOSTER_PRICING.get(item_id, 999999)
 
     if user.money < cost:
         raise HTTPException(status_code=400, detail="Insufficient credits")
 
-    current_buildings = list(user.owned_buildings)
-    current_buildings.append(item_id)
-    user.owned_buildings = current_buildings
+    # Boosters last for 1 hour (simulated or real, depending on your frontend clock)
+    # Using real-time 1 hour for standard web app tracking
+    expires_at = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+    
+    new_booster = {"id": item_id, "expiresAt": expires_at}
+    
+    current_boosters = list(user.active_boosters)
+    current_boosters.append(new_booster)
+    user.active_boosters = current_boosters
     user.money -= cost
     db.commit()
     
-    return {"money": user.money, "owned_buildings": user.owned_buildings}
+    return {"money": user.money, "active_boosters": user.active_boosters}
 
 @app.get("/api/analytics/forecast")
 def get_traffic_forecast():
