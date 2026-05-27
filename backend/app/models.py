@@ -34,6 +34,7 @@ class Shipment(Base):
     weight_kg = Column(Integer)
     destination_country = Column(String)
     scale = Column(String) 
+    category = Column(String, default="Standard") # 🔥 ADD THIS
     
     # STATUS: "Preparing", "Outbound", "Arrived", "Sheltered", "Failed"
     status = Column(String, default="Preparing")

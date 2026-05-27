@@ -50,20 +50,22 @@
   }
 }
 
+/* Replace your body and #root blocks in index.css with this */
 body {
   margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background-color: #0b0f19; /* Matches your dark theme background perfectly */
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+  width: 100vw;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  text-align: left; /* Stops everything from centering weirdly */
+  border: none; /* Kills the Vite side borders */
+  display: block;
 }
 
 h1,
@@ -108,4 +110,15 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+/* --- THE ABSOLUTE BORDER NUKE --- */
+html, body, #root {
+  width: 100% !important;
+  min-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  max-width: none !important;
+  overflow-x: hidden !important;
+  background-color: #0b0f19 !important; /* Forces the deep navy background everywhere */
 }

@@ -11,6 +11,7 @@ const AuthPage = ({ initialMode, onClose }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [isAdminMode, setIsAdminMode] = useState(false);
   
   // UI State
   const [showPassword, setShowPassword] = useState(false);
@@ -20,17 +21,16 @@ const AuthPage = ({ initialMode, onClose }) => {
 
   // --- Password Strength Calculator ---
   const getPasswordStrength = (pw) => {
-    if (!pw) return { score: 0, label: "Enter a password", colorClass: "" };
+    if (!pw) return { score: 0, label: "Enter a password (8-12 chars)", colorClass: "" };
     
     let score = 0;
     if (pw.length >= 8) score++;
-    if (pw.length >= 12) score++;
+    if (pw.length >= 10) score++;
     if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
-    if (/[0-9]/.test(pw)) score++;
-    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    if (/[0-9]/.test(pw) || /[^A-Za-z0-9]/.test(pw)) score++;
 
     const cap = Math.min(score, 4);
-    const labels = ["Enter a password", "Weak", "Moderate", "Strong", "Very Strong"];
+    const labels = ["Too short", "Weak", "Moderate", "Strong", "Very Strong"];
     const cls = ["", "weak", "medium", "strong", "strong"]; 
     
     return { score: cap, label: labels[cap], colorClass: cls[cap] };
@@ -64,23 +64,19 @@ const AuthPage = ({ initialMode, onClose }) => {
         setMessage(isLogin ? "Login Successful! Redirecting..." : "Account created successfully! You can now log in.");
         
         if (isLogin) {
-          // 🔥 CRITICAL FIX: Save the exact username returned by the backend to browser memory!
-          // This prevents the "Stale Session" bug when switching accounts.
           localStorage.setItem('username', data.user); 
-          
-          setTimeout(() => {
-            navigate('/dashboard'); 
+          // 🔥 Route to Admin panel if in Admin Mode, otherwise to Dashboard
+          setTimeout(() => { 
+            if (isAdminMode) {
+              navigate('/admin');
+            } else {
+              navigate('/dashboard'); 
+            }
           }, 600);
-        } else {
-          // Form reset on successful registration
-          setUsername("");
-          setPassword("");
-          setConfirmPassword("");
-          
-          // 🔥 QOL Upgrade: Auto-switch to login tab after 1.5s so they can sign in immediately
+          setUsername(""); setPassword(""); setConfirmPassword("");
           setTimeout(() => {
             setIsLogin(true);
-            setMessage(""); // Clear the success message so the login form looks fresh
+            setMessage(""); 
           }, 1500);
         }
       } else {
@@ -110,11 +106,33 @@ const AuthPage = ({ initialMode, onClose }) => {
       </div>
 
       <form onSubmit={handleAuth} className="screen active">
-        <div className="screen-title">{isLogin ? "Welcome back" : "Create account"}</div>
+        
+        {/* 🔥 WharfIntel Logo inserted specifically for Login */}
+        {isLogin && (
+          <div className="auth-brand-logo">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 4L10 13L3 13L10 4Z" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M13 6L13 13L19 13L13 6Z" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M2 15L22 15C22 15 19 18 12 18C5 18 2 15 2 15Z" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M2 21.5 Q 4.5 19.5 7 21.5 T 12 21.5 T 17 21.5 T 22 21.5" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Wharf<span>Intel</span>
+          </div>
+        )}
+
+        {/* --- DYNAMIC TITLE & SUBTITLE --- */}
+        <div className="screen-title">
+          {isAdminMode 
+            ? "System Overwatch" 
+            : (isLogin ? "Welcome back" : "Create account")}
+        </div>
+        
         <div className="screen-subtitle">
-          {isLogin 
-            ? "Secure access for WharfIntel Port Management." 
-            : "Passwords are hashed with a unique salt & pepper."}
+          {isAdminMode 
+            ? "Provide clearance credentials for Admin access." 
+            : (isLogin 
+                ? "Secure access for WharfIntel Port Management." 
+                : "Passwords are hashed with a unique salt & pepper.")}
         </div>
 
         <div className="form-group">
@@ -135,9 +153,11 @@ const AuthPage = ({ initialMode, onClose }) => {
           <div className="input-wrap">
             <input 
               type={showPassword ? "text" : "password"} 
-              placeholder={isLogin ? "••••••••" : "min. 8 characters"} 
+              placeholder={isLogin ? "••••••••" : "8 to 12 characters"} 
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
+              minLength={8}
+              maxLength={12}
               required 
             />
             <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
@@ -149,7 +169,6 @@ const AuthPage = ({ initialMode, onClose }) => {
             </button>
           </div>
           
-          {/* Dynamic Strength Meter UI */}
           {!isLogin && (
             <>
               <div className="strength-bar">
@@ -172,6 +191,8 @@ const AuthPage = ({ initialMode, onClose }) => {
                 placeholder="repeat your password" 
                 value={confirmPassword} 
                 onChange={(e) => setConfirmPassword(e.target.value)} 
+                minLength={8}
+                maxLength={12}
                 required 
               />
               <button type="button" className="eye-btn" onClick={() => setShowConfirm(!showConfirm)}>
@@ -185,16 +206,32 @@ const AuthPage = ({ initialMode, onClose }) => {
           </div>
         )}
 
-        <button type="submit" className="btn-primary">
-          {isLogin ? "Sign In" : "Create Account"}
-        </button>
-        
-        {message && (
-          <div className={`alert ${isSuccess ? 'alert-success show' : 'alert-error show'}`}>
-            <span className="alert-icon">{isSuccess ? '✅' : '⚠️'}</span>
-            <span>{message}</span>
-          </div>
-        )}
+        {/* This wrapper forces the button to the bottom if the form is short */}
+        <div className="form-footer" style={{ marginTop: 'auto' }}>
+          <button type="submit" className="btn-primary">
+            {isLogin ? "Sign In" : "Create Account"}
+          </button>
+
+          {/* --- NEW ADMIN LOGIN LINK --- */}
+          {isLogin && (
+            <div className="admin-toggle-wrap">
+              <button 
+                type="button" 
+                className="admin-toggle-btn"
+                onClick={() => setIsAdminMode(!isAdminMode)}
+              >
+                {isAdminMode ? "Return to Commander Login" : "Admin Login?"}
+              </button>
+            </div>
+          )}
+          
+          {message && (
+            <div className={`alert ${isSuccess ? 'alert-success show' : 'alert-error show'}`}>
+              <span className="alert-icon">{isSuccess ? '✅' : '⚠️'}</span>
+              <span>{message}</span>
+            </div>
+          )}
+        </div>
       </form>
     </div>
   );

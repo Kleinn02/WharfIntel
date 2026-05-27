@@ -2,167 +2,181 @@
    WHARFINTEL SIMULATION - MASTER STYLESHEET
    ========================================================================== */
 
+/* 1. Root Variables & Theme Modes */
 :root {
-  /* --- DARK MODE (DEFAULT) --- */
   --bg-main: #0a0c10;
-  --bg-panel: rgba(17, 19, 24, 0.95);
+  --bg-panel: rgba(17, 20, 27, 0.75);
   --bg-card: rgba(255, 255, 255, 0.03);
   --text-primary: #e8eaf0;
   --text-secondary: #94a3b8;
   --text-muted: #6b7280;
-  --border-color: rgba(255, 255, 255, 0.1);
-  --border-heavy: #1e2330;
-  --accent-green: #2ecc71;
+  --border-color: rgba(130, 160, 255, 0.15); 
+  --border-heavy: rgba(130, 160, 255, 0.3);
+  --accent-blue: #82a0ff; 
+  --accent-green: #2ecc71; /* Kept only for specific alert states */
   --font-mono: 'Space Mono', monospace;
-  --font-sans: sans-serif;
+  --font-sans: 'Inter', sans-serif;
 }
 
 .sim-wrapper.light-mode {
-  /* --- LIGHT MODE OVERRIDES (NEUTRAL CLEAN) --- */
   --bg-main: #f0f2f5; 
-  --bg-panel: #ffffff ; 
+  --bg-panel: rgba(255, 255, 255, 0.85); 
   --bg-card: #f9fafb; 
-  --text-primary: #1a1a1a !important; 
-  --text-secondary: #666666 !important; 
+  --text-primary: #111827 !important; 
+  --text-secondary: #6b7280 !important; 
   --text-muted: #9ca3af;
-  --border-color: rgba(0, 0, 0, 0.08);
-  --border-heavy: rgba(0, 0, 0, 0.15);
+  --border-color: rgba(99, 102, 241, 0.2);
+  --accent-blue: #6366f1;
+  --accent-green: #2ecc71; /* Kept only for specific alert states */
 }
 
-/* --- FULLSCREEN LAYOUT --- */
+/* 2. Fullscreen Layout & Leaflet Overrides */
 .sim-wrapper { position: relative; height: 100vh; width: 100vw; background-color: var(--bg-main); color: var(--text-primary); font-family: var(--font-mono); overflow: hidden; transition: background-color 0.3s ease; }
 .sim-map-fullscreen { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
-
-/* --- LEAFLET OVERRIDES --- */
 .leaflet-container { height: 100%; width: 100%; background: var(--bg-main); }
 .leaflet-popup-content-wrapper { background: var(--bg-panel) !important; color: var(--text-primary) !important; border: 1px solid var(--border-heavy); border-radius: 8px !important; }
 .leaflet-popup-tip { background: var(--bg-panel) !important; border: 1px solid var(--border-heavy); }
 
-/* --- LEFT SIDE MAP CONTROLS (ZOOM & THEME) --- */
-.sim-map-controls {
-  position: absolute;
-  top: 90px; /* Placed exactly below the exit button */
-  left: 25px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* 3. Map Controls & UI Overlays (Radar, Zoom, Theme, Exit) */
+.radar-grid-overlay {
+  position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 400; 
+  background-image: linear-gradient(rgba(130, 160, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(130, 160, 255, 0.04) 1px, transparent 1px);
+  background-size: 50px 50px;
 }
-
-.control-btn {
-  width: 40px;
-  height: 40px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  border-radius: 8px;
-  font-size: 20px;
-  font-weight: bold;
-  cursor: pointer;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
+.sim-wrapper.light-mode .radar-grid-overlay {
+  background-image: linear-gradient(rgba(99, 102, 241, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(99, 102, 241, 0.15) 1px, transparent 1px);
 }
-
+.sim-map-controls { position: absolute; top: 90px; left: 25px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+.control-btn { width: 40px; height: 40px; background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 8px; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); transition: all 0.2s ease; backdrop-filter: blur(8px); }
 .control-btn:hover { background: var(--bg-card); transform: scale(1.05); }
 .theme-toggle-btn { margin-top: 10px; font-size: 16px; }
-
-/* TopHUD.css */
-.stats-hud { position: absolute; top: 25px; left: 50%; transform: translateX(-50%); z-index: 3000; display: flex; gap: 30px; background: var(--bg-panel); backdrop-filter: blur(16px); padding: 12px 30px; border-radius: 50px; border: 1px solid var(--border-color); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); align-items: center; }
-.stat-item { display: flex; align-items: center; gap: 12px; }
-.stat-item .label { color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 1.5px; font-family: var(--font-mono); }
-.stat-item .value.money { color: var(--accent-green); font-weight: bold; font-size: 1.1rem; font-family: var(--font-mono); }
-.rep-bar-container { width: 100px; height: 8px; background: var(--border-heavy); border-radius: 10px; overflow: hidden; }
-.rep-bar-fill { height: 100%; background: linear-gradient(90deg, #f59e0b, #2ecc71); transition: width 0.5s ease-out; }
-
-/* --- TOP-LEFT EXIT BUTTON --- */
 .sim-exit-btn { position: absolute; top: 25px; left: 25px; width: 45px; height: 45px; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-secondary); font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2000; backdrop-filter: blur(8px); transition: all 0.3s ease; }
 .sim-exit-btn:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
 
-/* --- BOTTOM ACTION BAR --- */
-.sim-bottom-bar { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; z-index: 2000; background: var(--bg-panel); backdrop-filter: blur(16px); padding: 10px 20px; border-radius: 50px; border: 1px solid var(--border-color); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); }
+/* 4. Top HUD (Credits, Reputation, Income) */
+.stats-hud { position: absolute; top: 25px; left: 50%; transform: translateX(-50%); z-index: 3000; display: flex; gap: 30px; background: var(--bg-panel); backdrop-filter: blur(20px); padding: 12px 30px; border-radius: 50px; border: 1px solid var(--border-color); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); align-items: center; }
+.stat-item { display: flex; align-items: center; gap: 12px; }
+.stat-item .label { color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 1.5px; font-family: var(--font-mono); }
+.stat-item .value.money { color: var(--accent-blue) !important; font-weight: bold; font-size: 1.1rem; font-family: var(--font-mono); text-shadow: 0 0 10px var(--border-color); }
+.rep-bar-container { width: 100px; height: 8px; background: var(--border-heavy); border-radius: 10px; overflow: hidden; }
+.rep-bar-fill { height: 100%; background: var(--accent-blue) !important; transition: width 0.5s ease-out; box-shadow: 0 0 10px var(--border-color); }
+.floating-income-text { color: var(--accent-blue) !important; font-weight: bold; text-shadow: 0 0 10px var(--border-color); font-family: var(--font-mono); animation: floatUp 1s ease-out forwards; position: absolute; pointer-events: none; font-size: 18px; }
+@keyframes floatUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-20px); } }
+
+/* 5. Bottom Action Bar & Navigation */
+.sim-bottom-bar { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; padding: 10px 20px; border-radius: 30px; background: var(--bg-panel); backdrop-filter: blur(16px); border: 1px solid var(--border-color); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); z-index: 2000; }
 .action-btn { background: transparent; color: var(--text-secondary); border: 1px solid transparent; padding: 10px 20px; border-radius: 30px; font-family: var(--font-mono); font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
-.action-btn:hover:not(.disabled):not(.active-green) { background: rgba(46, 204, 113, 0.1); color: var(--text-primary); border-color: rgba(46, 204, 113, 0.5); box-shadow: 0 0 15px rgba(46, 204, 113, 0.2); }
-.action-btn.active-green { background: var(--accent-green); color: #000 !important; border-color: var(--accent-green); box-shadow: 0 0 20px rgba(46, 204, 113, 0.4); }
+.action-btn.active-blue { background: var(--accent-blue); color: #fff !important; border-color: var(--accent-blue); box-shadow: 0 0 20px rgba(130, 160, 255, 0.4); }
+.action-btn:hover:not(.disabled):not(.active-blue) { background: rgba(130, 160, 255, 0.1); color: var(--text-primary); border-color: rgba(130, 160, 255, 0.5); box-shadow: inset 0 0 10px rgba(130, 160, 255, 0.2); }
 .action-btn.disabled { opacity: 0.5; cursor: not-allowed; }
+.pulsing-dot-blue { display: inline-block; width: 8px; height: 8px; background-color: var(--accent-blue); border-radius: 50%; margin-left: 8px; animation: pulseGlowBlue 1.5s infinite; }
+@keyframes pulseGlowBlue { 0% { box-shadow: 0 0 0 0 rgba(130, 160, 255, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(130, 160, 255, 0); } 100% { box-shadow: 0 0 0 0 rgba(130, 160, 255, 0); } }
+.tracking-active-pulse { position: relative; font-weight: bold; text-shadow: 0 0 10px rgba(130, 160, 255, 0.8); }
 
-/* --- TIME POPOVER MENU --- */
-.time-popover-wrapper { position: relative; display: flex; align-items: center; }
-.time-menu-dropdown { position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background: var(--bg-panel); backdrop-filter: blur(12px); border: 1px solid var(--border-color); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 5px; width: 150px; box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3); animation: popoverFade 0.2s ease-out; }
-@keyframes popoverFade { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
-.time-opt-btn { background: transparent; color: var(--text-secondary); border: none; padding: 10px; text-align: center; font-family: var(--font-mono); border-radius: 6px; cursor: pointer; transition: all 0.2s; }
-.time-opt-btn:hover { background: var(--bg-card); color: var(--text-primary); }
-.time-opt-btn.selected { background: rgba(46, 204, 113, 0.2); color: var(--accent-green) !important; font-weight: bold; }
-
-/* --- COMPACT RIGHT-SIDE FLOATING PANELS --- */
-.floating-side-panel {
-  position: absolute;
-  top: 25px; 
-  right: 24px;
-  width: 320px; 
-  max-height: calc(100vh - 120px); 
-  background: var(--bg-panel);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-  z-index: 1500;
-  display: flex;
-  flex-direction: column;
-  padding: 16px 20px; 
-  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow-y: auto;
+/* 6. Floating Side Panels & Badges */
+.floating-side-panel { 
+  position: absolute; top: 25px; right: 24px; width: 350px; 
+  max-height: calc(100vh - 100px); background: var(--bg-panel); 
+  backdrop-filter: blur(20px); border: 1px solid var(--border-color); 
+  border-radius: 16px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25); 
+  z-index: 1500; display: flex; flex-direction: column; padding: 16px 20px; 
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+  overflow: hidden; /* 🔥 FIX: Locks the panel size */
 }
 
 .floating-side-panel::-webkit-scrollbar { width: 4px; }
 .floating-side-panel::-webkit-scrollbar-thumb { background: var(--border-heavy); border-radius: 4px; }
-
 @keyframes slideInRight { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
-
 .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.panel-header h3 { margin: 0; font-size: 16px; color: var(--text-primary); font-family: var(--font-sans); }
-.vessel-count { background: rgba(46, 204, 113, 0.1); color: var(--accent-green); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; }
+.panel-header h3 { margin: 0; font-size: 16px; color: var(--accent-blue); font-family: var(--font-sans); }
+.vessel-count { background: rgba(130, 160, 255, 0.1); color: var(--accent-blue); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700; text-transform: uppercase; }
+.badge.docked { color: var(--accent-blue); background: rgba(130, 160, 255, 0.1); }
+.badge.outbound { color: #0ea5e9; background: rgba(14, 165, 233, 0.1); }
+.badge.failed { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
 
-/* --- INFRASTRUCTURE HUB / TACTICAL BOOSTERS --- */
+/* 🔥 NEW: Scrollable areas for Lists and Timelines */
+.traffic-list { display: flex; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto; padding-right: 8px; margin-right: -8px; }
+.scrollable-timeline-container { flex: 1; overflow-y: auto; padding-right: 12px; margin-right: -12px; margin-top: 10px; }
+.traffic-list::-webkit-scrollbar, .scrollable-timeline-container::-webkit-scrollbar { width: 4px; }
+.traffic-list::-webkit-scrollbar-thumb, .scrollable-timeline-container::-webkit-scrollbar-thumb { background: var(--border-heavy); border-radius: 4px; }
+
+/* 🔥 NEW: Muted styling for pending timeline steps */
+.timeline-step.pending { opacity: 0.5; }
+.timeline-step.pending .step-timestamp .date,
+.timeline-step.pending .step-timestamp .time,
+.timeline-step.pending .step-content strong,
+.timeline-step.pending .step-content p { color: var(--text-muted) !important; }
+.timeline-step.pending .step-dot { background-color: var(--border-heavy) !important; box-shadow: none !important; }
+.timeline-step.pending .step-line { background-color: var(--border-heavy) !important; }
+
+/* 7. Facility Ops & Hub Upgrades */
 .traffic-list { display: flex; flex-direction: column; gap: 12px; }
-.upgrade-card { 
-  background: var(--bg-card); 
-  border: 1px solid var(--border-color); 
-  border-radius: 8px; 
-  padding: 16px; 
-  display: flex; 
-  flex-direction: column; 
-  gap: 10px;
-  transition: all 0.2s;
-}
-.upgrade-card.active-booster { 
-  border-color: var(--accent-green); 
-  box-shadow: 0 0 10px rgba(46, 204, 113, 0.2); 
-}
+.upgrade-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: all 0.2s; }
+.upgrade-card:hover { border-color: var(--accent-blue); box-shadow: 0 0 10px rgba(130, 160, 255, 0.1); }
+.upgrade-card.active-booster { border-color: var(--accent-blue); box-shadow: 0 0 10px rgba(130, 160, 255, 0.2); }
 .tc-top { display: flex; justify-content: space-between; align-items: center; }
 .tc-top h4 { margin: 0; font-size: 14px; color: var(--text-primary); font-family: var(--font-mono); }
 .price-badge { background: rgba(59, 130, 246, 0.1); color: #60a5fa; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: var(--font-mono); }
-.upgrade-desc { font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.4; font-family: var(--font-sans); }
+.upgrade-desc { font-size: 12px; color: var(--accent-blue) !important; margin: 0; line-height: 1.4; font-family: var(--font-sans); font-weight: bold; }
 .upgrade-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; }
-.income-tag { font-size: 12px; color: var(--accent-green); font-weight: bold; font-family: var(--font-mono); }
-.buy-btn-mini { background: var(--accent-green); color: #000; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; font-family: var(--font-mono); transition: all 0.2s; }
-.buy-btn-mini:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(46, 204, 113, 0.3); }
+.income-tag { font-size: 12px; color: var(--accent-blue); font-weight: bold; font-family: var(--font-mono); }
+.buy-btn-mini { background: var(--accent-blue); color: #000; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; font-family: var(--font-mono); transition: all 0.2s; }
+.buy-btn-mini:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(130, 160, 255, 0.3); }
 .buy-btn-mini:disabled { background: var(--border-heavy); color: var(--text-muted); cursor: not-allowed; }
 
-/* Compact Export Form */
-.sim-export-form { display: flex; flex-direction: column; gap: 12px; } /* Tighter gaps */
+/* 8. Logistics Export Form */
+.sim-export-form { display: flex; flex-direction: column; gap: 12px; } 
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .form-group label { position: relative; left: 0px; font-size: 0.75rem; color: var(--text-secondary) !important; text-transform: uppercase; font-weight: bold; }
 .modern-input, .modern-select { width: 100%; padding: 8px 12px; background: var(--bg-card) !important; border: 1px solid var(--border-color) !important; border-radius: 6px; color: var(--text-primary) !important; font-size: 0.85rem; box-sizing: border-box; transition: border 0.2s;}
-.modern-input:focus, .modern-select:focus { border-color: var(--accent-green); outline: none; }
+.modern-input:focus, .modern-select:focus { border-color: var(--accent-blue); outline: none; box-shadow: 0 0 8px rgba(130, 160, 255, 0.2); }
 .form-row { display: flex; gap: 10px; }
-.btn-launch-sim { background: var(--accent-green); color: #000; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; cursor: pointer; margin-top: 5px; transition: all 0.2s; box-shadow: 0 4px 10px rgba(46, 204, 113, 0.2);}
-.btn-launch-sim:hover { background: #27ae60; transform: translateY(-2px); }
+.cost-tag { color: var(--accent-blue); font-family: var(--font-mono); font-size: 14px; margin-top: 5px; background: rgba(130, 160, 255, 0.1) !important; padding: 8px; border-radius: 6px; font-weight: bold; text-align: center; }
+.btn-launch-sim { background: var(--accent-blue); color: #000; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 0.9rem; cursor: pointer; margin-top: 5px; transition: all 0.2s; box-shadow: 0 4px 10px rgba(130, 160, 255, 0.2);}
+.btn-launch-sim:hover:not(:disabled) { background: #6b8cff; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(130, 160, 255, 0.4); }
+.btn-launch-sim:disabled { background: var(--border-heavy); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
+.btn-launch-sim.state-deployed:disabled { background: rgba(245, 158, 11, 0.05); color: #f59e0b; border: 1px dashed rgba(245, 158, 11, 0.4); animation: waitingPulse 1.5s infinite alternate ease-in-out; }
+@keyframes waitingPulse { 0% { opacity: 0.6; box-shadow: inset 0 0 5px rgba(245, 158, 11, 0); } 100% { opacity: 1; box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.8); } }
 
-/* --- MODALS --- */
+/* 9. Shopee Style Timeline */
+.shopee-timeline { display: flex; flex-direction: column; padding: 10px 5px; margin-top: 15px; }
+.timeline-step { display: flex; position: relative; padding-bottom: 25px; opacity: 0.4; transition: all 0.3s ease; }
+.timeline-step.completed { opacity: 1; }
+.step-timestamp { width: 45px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 12px; font-family: var(--font-sans); }
+.step-timestamp .date { font-size: 11px; font-weight: bold; color: var(--text-primary); text-align: right; }
+.step-timestamp .time { font-size: 10px; color: var(--text-muted); }
+.step-indicator { display: flex; flex-direction: column; align-items: center; margin-right: 15px; position: relative; width: 20px; }
+.step-dot { position: relative; right: 4px; width: 12px; height: 12px; border-radius: 50%; background-color: var(--border-heavy); z-index: 2; }
+.step-line { position: absolute; top: 12px; bottom: -25px; left: 5px; width: 2px; background-color: var(--border-heavy); z-index: 1; }
+.timeline-step:last-child .step-line { display: none; }
+.step-content { flex: 1; transform: translateY(-4px); }
+.step-content strong { display: block; font-size: 0.95rem; color: var(--text-primary); margin-bottom: 4px; }
+.step-content p { margin: 0; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.3; }
+.step-time { color: var(--accent-blue) !important; font-size: 0.75rem; margin-top: 4px; display: block; }
+.timeline-step.completed.truck-step .step-dot { background-color: var(--accent-blue) !important; box-shadow: 0 0 8px var(--border-heavy) !important; }
+.timeline-step.completed.truck-step .step-line { background-color: var(--accent-blue) !important; }
+.timeline-step.completed.ship-step .step-dot { background-color: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6); }
+.timeline-step.completed.ship-step .step-line { background-color: #3b82f6; }
+
+/* 10. Diegetic Terminal */
+.tactical-terminal { position: absolute; bottom: 30px; left: 25px; width: 320px; height: 140px; background: rgba(5, 7, 10, 0.8); border: 1px solid var(--border-color); border-left: 3px solid var(--accent-blue); border-radius: 8px; padding: 10px; z-index: 2000; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; backdrop-filter: blur(10px); }
+.terminal-line { font-family: var(--font-mono); font-size: 10px; color: var(--accent-blue); margin: 2px 0; opacity: 0.8; animation: typeLine 0.2s ease-out; }
+.terminal-line .timestamp { color: var(--text-muted); margin-right: 8px; }
+.terminal-line.highlight { color: var(--accent-green) !important; font-weight: bold; }
+.terminal-line.warning { color: #f1c40f; }
+.terminal-line.danger { color: #ef4444; }
+@keyframes typeLine { from { opacity: 0; transform: translateX(-5px); } to { opacity: 0.8; transform: translateX(0); } }
+
+/* 11. Interactive Menus & Timeskip */
+.time-popover-wrapper { position: relative; display: flex; align-items: center; }
+.time-menu-dropdown { position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background: var(--bg-panel); backdrop-filter: blur(12px); border: 1px solid var(--border-color); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 5px; width: 150px; box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3); animation: popoverFade 0.2s ease-out; }
+@keyframes popoverFade { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.time-opt-btn { background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-color); padding: 10px; text-align: center; font-family: var(--font-mono); border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+.time-opt-btn:hover { background: rgba(130, 160, 255, 0.1); color: var(--text-primary); }
+.time-opt-btn.active-blue { background: var(--accent-blue); color: #fff !important; border-color: var(--accent-blue); font-weight: bold; }
+
+/* 12. Modals (Exit, Chaos) */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); z-index: 9999; display: flex; justify-content: center; align-items: center; }
 .confirmation-modal { background: var(--bg-panel); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 0 40px rgba(239, 68, 68, 0.1); }
 .confirmation-modal h3 { margin: 0 0 12px 0; color: var(--text-primary); font-size: 20px; }
@@ -173,124 +187,77 @@
 .btn-cancel:hover { background: var(--bg-card); }
 .btn-confirm-exit { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.5); color: #ef4444; }
 .btn-confirm-exit:hover { background: #ef4444; color: #fff; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
-
-.badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 700; text-transform: uppercase; }
-.badge.docked { color: #10b981; background: rgba(16, 185, 129, 0.1); }
-.badge.outbound { color: #0ea5e9; background: rgba(14, 165, 233, 0.1); }
-.badge.failed { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-
-/* --- CHAOS / STORM MODAL --- */
 .chaos-modal { background: var(--bg-panel) !important; border: 2px solid #f1c40f; border-radius: 16px; padding: 40px; width: 500px; text-align: center; position: relative; box-shadow: 0 0 50px rgba(241, 196, 15, 0.2); animation: modalShake 0.5s infinite alternate; }
 @keyframes modalShake { from { transform: rotate(-0.5deg); } to { transform: rotate(0.5deg); } }
+.warning-title { font-family: var(--font-mono); letter-spacing: 2px; color: #ffc107; }
 .chaos-actions { display: flex; flex-direction: column; gap: 15px; margin-top: 30px; }
 .btn-push { background: linear-gradient(135deg, #e67e22, #d35400); color: white; border: none; padding: 20px; border-radius: 12px; font-weight: bold; cursor: pointer; display: flex; flex-direction: column; align-items: center; transition: transform 0.2s, box-shadow 0.2s; }
 .btn-push:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(230, 126, 34, 0.4); }
-.btn-shelter { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-heavy); padding: 15px; border-radius: 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; transition: background 0.2s; }
-.btn-shelter:hover { background: var(--border-color); }
-.cost-tag { position: relative; background: rgba(46, 204, 113, 0.1); color: var(--accent-green); padding: 8px; border-radius: 6px; font-weight: bold; margin-top: 5px; display: block; text-align: center; font-size: 13px; }
-
-/* --- SLEEK POPUP OVERRIDES --- */
-.custom-popup .leaflet-popup-content-wrapper { background: var(--bg-panel) !important; border: 1px solid var(--border-color); border-radius: 12px !important; backdrop-filter: blur(10px); padding: 0; overflow: hidden; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3); }
-.custom-popup .leaflet-popup-tip { background: var(--bg-panel) !important; border: 1px solid var(--border-color); }
-.custom-popup .leaflet-popup-content { margin: 0; color: var(--text-primary); font-family: var(--font-mono); }
-.popup-header { background: var(--bg-card); padding: 12px 15px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
-.popup-header strong { color: var(--text-primary); font-size: 14px; }
-.popup-body { padding: 15px; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
-.popup-body p { margin: 4px 0; color: var(--text-secondary); }
-
-/* --- THE NEW RELAUNCH UI --- */
+.btn-subtext { font-size: 10px; opacity: 0.8; margin-top: 4px; }
 .relaunch-container { margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(241, 196, 15, 0.3); text-align: center; }
 .relaunch-warning-text { color: #f59e0b !important; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 10px; }
 .btn-launch-sim.relaunch-btn { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid #f59e0b; padding: 8px 12px; font-size: 12px; border-radius: 6px; width: 100%; transition: all 0.2s ease-in-out; cursor: pointer; }
 .btn-launch-sim.relaunch-btn:hover:not(:disabled) { background: #f59e0b; color: #fff; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
-.btn-launch-sim.relaunch-btn:disabled { border-color: var(--border-heavy); color: var(--text-muted); background: transparent; }
 
-/* --- CUSTOM COMMAND ALERT UI (Ultra-Clean Terminal) --- */
-.custom-notification { background: var(--bg-panel); border: 1px solid var(--border-color); border-left: 4px solid; border-radius: 8px; padding: 24px 30px; width: 420px; text-align: left; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3); animation: slideInFade 0.4s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; }
+/* 13. Fix the Notification Modal so it obeys Light Mode */
+.custom-notification {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid;
+  border-radius: 8px;
+  padding: 24px 30px;
+  width: 420px;
+  text-align: left;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  animation: slideInFade 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
 @keyframes slideInFade { from { opacity: 0; transform: translateY(-20px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.custom-notification.success { border-left-color: #2ecc71; }
-.custom-notification.error { border-left-color: #ef4444; }
-.custom-notification.info { border-left-color: #3b82f6; }
+.custom-notification.success { border-left-color: var(--accent-blue); box-shadow: 0 0 20px rgba(130, 160, 255, 0.2); }
+.custom-notification.error { border-left-color: #ef4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); }
 .notif-header { display: flex; align-items: center; gap: 15px; margin-bottom: 12px; }
 .notif-icon { font-size: 1.5rem; background: var(--bg-card) !important; padding: 8px; border-radius: 8px; }
 .custom-notification h3 { margin: 0; font-size: 1.1rem; color: var(--text-primary) !important; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; }
-.notif-message { color: var(--text-secondary) !important; font-size: 0.9rem; line-height: 1.5; margin-bottom: 24px; font-family: var(--font-mono); }
+.custom-notification .notif-message { color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; margin-bottom: 24px; font-family: var(--font-mono); }
 .notif-ack-btn { background: var(--bg-card) !important; color: var(--text-primary) !important; border: 1px solid var(--border-color) !important; padding: 12px 20px; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; transition: all 0.2s; align-self: flex-end; }
-.notif-ack-btn:hover { background: var(--border-heavy) !important; color: var(--text-primary) !important; }
-.custom-notification.success .notif-ack-btn:hover { background: #2ecc71; color: #000; border-color: #2ecc71; }
-.custom-notification.error .notif-ack-btn:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+.notif-ack-btn:hover { background: var(--border-heavy) !important; }
+.custom-notification.success .notif-ack-btn:hover { background: var(--accent-blue) !important; color: #fff !important; border-color: var(--accent-blue) !important; }
 
-/* 1. The 'Waiting on Fleet' State */
-.btn-launch-sim.state-deployed:disabled { background: rgba(245, 158, 11, 0.05); color: #f59e0b; border: 1px dashed rgba(245, 158, 11, 0.4); box-shadow: none; cursor: not-allowed; transform: none; animation: waitingPulse 1.5s infinite alternate ease-in-out; }
-@keyframes waitingPulse { 0% { opacity: 0.6; box-shadow: inset 0 0 5px rgba(245, 158, 11, 0); } 100% { opacity: 1; box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.8); } }
-/* 2. The 'Insufficient Funds' State */
-.btn-launch-sim.state-broke:disabled { background: rgba(239, 68, 68, 0.05); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: none; cursor: not-allowed; transform: none; }
+/* 14. Global Light Mode Adjustments */
 
-/* --- ACTIVE INCOME FLOATING ANIMATION --- */
-.floating-income-text {
-  color: #4fffb0;
-  font-family: var(--font-mono);
-  font-weight: 900;
-  font-size: 18px;
-  text-shadow: 0 0 10px rgba(79, 255, 176, 0.6);
-  animation: floatUpFade 0.8s ease-out forwards;
-  pointer-events: none;
+/* Removed .tactical-terminal from this block so it doesn't turn white */
+.sim-wrapper.light-mode .sim-bottom-bar,
+.sim-wrapper.light-mode .floating-side-panel,
+.sim-wrapper.light-mode .custom-notification,
+.sim-wrapper.light-mode .custom-popup .leaflet-popup-content-wrapper,
+.sim-wrapper.light-mode .custom-popup .leaflet-popup-tip {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+  color: #111827 !important;
 }
 
-@keyframes floatUpFade {
-  0% { opacity: 0; transform: translateY(0) scale(0.8); }
-  20% { opacity: 1; transform: translateY(-10px) scale(1.1); }
-  100% { opacity: 0; transform: translateY(-30px) scale(1); }
+/* 🔥 NEW: Keep the terminal dark and tactical even in Light Mode! */
+.sim-wrapper.light-mode .tactical-terminal {
+  background: rgba(15, 23, 42, 0.85) !important; /* Deep slate */
+  border: 1px solid rgba(99, 102, 241, 0.4) !important;
+  border-left: 3px solid #82a0ff !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+.sim-wrapper.light-mode .tactical-terminal .terminal-line.highlight { color: var(--accent-green) !important; }
+.sim-wrapper.light-mode .tactical-terminal .timestamp { color: #94a3b8 !important; }
+
+/* 🔥 NEW: Make the Cost Tag pop in Light Mode */
+.sim-wrapper.light-mode .cost-tag {
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: var(--accent-blue) !important;
+  border: 1px solid rgba(99, 102, 241, 0.3);
 }
 
-/* --- MARITIME ACADEMY QUIZ --- */
-.quiz-container {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  padding: 10px 0;
-}
-
-.quiz-progress {
-  font-size: 11px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  font-weight: bold;
-}
-
-.quiz-question {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.4;
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-}
-
-.quiz-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.quiz-opt-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  padding: 12px;
-  border-radius: 8px;
-  text-align: left;
-  font-size: 13px;
-  font-family: var(--font-sans);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  line-height: 1.3;
-}
-
-.quiz-opt-btn:hover {
-  background: rgba(46, 204, 113, 0.1);
-  border-color: var(--accent-green);
-  color: var(--text-primary);
-  transform: translateX(4px);
-}
+/* Existing Light Mode overrides */
+.sim-wrapper.light-mode .stats-hud { background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(99, 102, 241, 0.3); }
+.sim-wrapper.light-mode .action-btn.active-blue { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+.sim-wrapper.light-mode .action-btn:hover:not(.disabled):not(.active-blue) { background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.4); }
+.sim-wrapper.light-mode .btn-launch-sim { color: #fff; }
+.sim-wrapper.light-mode .time-opt-btn.active-blue { color: #fff !important; }

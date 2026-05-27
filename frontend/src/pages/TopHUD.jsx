@@ -1,6 +1,6 @@
- // TopHUD.jsx
+// TopHUD.jsx
 import React from 'react';
-import './Simulation.css'; // <-- Add this import!
+import './Simulation.css'; 
 
 const TopHUD = ({ resources }) => {
   return (
@@ -12,7 +12,10 @@ const TopHUD = ({ resources }) => {
       <div className="stat-item">
         <span className="label">PORT REP:</span>
         <div className="rep-bar-container">
-          <div className="rep-bar-fill" style={{ width: `${resources.reputation}%` }}></div>
+          <div 
+            className="rep-bar-fill" 
+            style={{ width: `${resources.reputation}%`, background: 'linear-gradient(90deg, #f59e0b, #2ecc71)' }}>
+          </div>
         </div>
       </div>
     </div>

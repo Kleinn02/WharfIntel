@@ -1,42 +1,16 @@
-/* ═════════════════════════════════════════════════════════════════════════════
-   SECURE REGISTRATION & LOGIN SYSTEM - STYLESHEET
-   Cybersecurity Midterm Project
-   ═════════════════════════════════════════════════════════════════════════════ */
-
-/* This ensures the entire app container fills the screen and centers its children */
-#root {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh; /* Takes 100% of the viewport height */
-  width: 100%;
-  background-color: #000; /* Keeps your dark theme consistent */
-  margin: 0;
-}
-
-/* Ensure your app wrapper doesn't have weird margins */
-#app {
-  width: 100%;
-  max-width: 460px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-}
-
 :root {
-  --bg:         #0a0c10;
-  --surface:    #111318;
+  --bg:         #0b0f19;
+  --surface:    #0b0f19;
   --border:     #1e2330;
-  --accent:     #4fffb0;
+  --accent:     #82a0ff; /* 🔥 Switched to the neon blue Dashboard aura */
   --danger:     #ff4f6a;
   --text:       #e8eaf0;
   --text-muted: #6b7280;
   --text-dim:   #3a4055;
   --mono:       'Space Mono', monospace;
-  --sans:       'DM Sans', sans-serif;
+  --sans:       'Inter', 'DM Sans', sans-serif;
   --radius:     14px;
-  --shadow:     0 0 40px rgba(79,255,176,0.06);
+  --shadow:     0 0 40px rgba(130, 160, 255, 0.1); /* Blue glow */
 }
 
 *, *::before, *::after { 
@@ -45,103 +19,59 @@
   padding: 0; 
 }
 
-body {
-  background: #000000;
-  color: var(--text);
-  font-family: var(--sans);
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow-x: hidden;
-  position: relative;
-}
-
-/* Three.js Canvas */
-#starfieldCanvas {
+/* Ensure the blur overlay centers the card perfectly */
+.modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-  z-index: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(11, 15, 25, 0.75); /* Dark blue tinted overlay */
+  backdrop-filter: blur(5px);
 }
 
-/* Background Decorations - Three.js Starfield */
-
-#app {
+/* --- THE CARD FIX --- */
+.auth-modal-card {
+  width: 100%;
+  max-width: 420px; 
+  min-height: 560px; /* 🔥 This forces the card to always stay the same size */
+  display: flex;
+  flex-direction: column;
   position: relative;
-  z-index: 1;
-  width: 100%;
-  max-width: 460px;
-  padding: 20px;
-}
-
-/* Brand Header */
-.brand { 
-  text-align: center; 
-  margin-bottom: 32px; 
-}
-
-.brand-logo {
-  display: inline-flex; 
-  align-items: center; 
-  gap: 10px; 
-  margin-bottom: 8px;
-}
-
-.brand-name {
-  font-family: var(--mono); 
-  font-size: 28px; 
-  font-weight: 700;
-  color: var(--text); 
-  letter-spacing: -0.5px;
-  text-shadow: 
-    0 0 10px rgba(79,255,176,0.4),
-    0 0 20px rgba(79,255,176,0.2),
-    0 0 30px rgba(79,168,255,0.2),
-    0 0 40px rgba(79,255,176,0.1);
-}
-
-.brand-name span { 
-  color: var(--accent); 
-  text-shadow: 
-    0 0 15px rgba(79,255,176,0.6),
-    0 0 25px rgba(79,255,176,0.4),
-    0 0 35px rgba(79,255,176,0.2);
-}
-
-.brand-tagline {
-  font-size: 12px; 
-  color: var(--text-muted);
-  font-family: var(--mono); 
-  letter-spacing: 1px; 
-  text-transform: uppercase;
-}
-
-/* Main Container */
-.card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 36px 36px 32px;
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.04);
-  animation: fadeSlideIn 0.4s cubic-bezier(0.16,1,0.3,1) both;
-}
-
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to   { opacity: 1; transform: translateY(0); }
+  box-shadow: var(--shadow);
+  z-index: 2001; 
+  animation: modalPop 0.3s cubic-bezier(0.17, 0.89, 0.32, 1.28);
 }
 
 .screen { 
   display: none; 
+  flex-direction: column;
+  flex-grow: 1; /* Pushes content to fill the fixed height */
+}
+.screen.active { 
+  display: flex; 
 }
 
-.screen.active { 
-  display: block; 
+/* Brand Logo inside Login */
+.auth-brand-logo {
+  display: flex;
+  align-items: center;
+  /* gap: 8px; */
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 24px;
+  margin-left: 100px;
 }
+.auth-brand-logo span { color: var(--accent); }
 
 /* Tab Navigation */
 .tab-nav {
@@ -160,13 +90,12 @@ body {
   border: none; 
   background: transparent;
   color: var(--text-muted); 
-  font-family: var(--mono);
-  font-size: 13px; 
-  font-weight: 700; 
+  font-family: var(--sans);
+  font-size: 14px; 
+  font-weight: 600; 
   border-radius: 7px;
   cursor: pointer; 
   transition: all 0.2s; 
-  letter-spacing: 0.5px;
 }
 
 .tab-btn.active { 
@@ -181,11 +110,12 @@ body {
 
 /* Form Styles */
 .screen-title {
-  font-family: var(--mono); 
-  font-size: 20px; 
+  font-family: var(--sans); 
+  font-size: 22px; 
   font-weight: 700;
   margin-bottom: 4px; 
   color: var(--text);
+  letter-spacing: -0.5px;
 }
 
 .screen-subtitle {
@@ -195,74 +125,43 @@ body {
   line-height: 1.5;
 }
 
-.form-group { 
-  margin-bottom: 10px; 
-}
+.form-group { margin-bottom: 16px; }
 
 label {
-  position: relative;
   display: block; 
-  right: 140px;
-  font-family: var(--mono); 
-  font-size: 11px; 
-  font-weight: 700;
-  letter-spacing: 1px; 
+  font-family: var(--sans); 
+  font-size: 12px; 
+  font-weight: 600;
   text-transform: uppercase; 
   color: var(--text-muted); 
-  margin-bottom: 1px;
+  margin-bottom: 6px;
 }
 
-.con-firm {
-  position: relative;
-  right: 110px;
-}
-
-.input-wrap { 
-  position: relative; 
-}
-
-/* Input Icons */
-.input-icon {
-  position: absolute;
-  left: 14px; 
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 15px;
-  color: var(--text-dim);
-  pointer-events: none;
-  z-index: 1;
-}
+.input-wrap { position: relative; }
 
 /* Input Fields */
 input[type="text"],
 input[type="password"] {
   width: 100%;
-  padding: 13px 44px 13px 16px;
-  background: var(--bg);
+  padding: 14px 44px 14px 16px;
+  background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--text);
   font-family: var(--sans);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-/* Remove browser default password icons */
-input::-ms-reveal,
-input::-ms-clear {
-  display: none;
+  transition: all 0.2s;
 }
 
 input[type="text"]:focus,
 input[type="password"]:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(79,255,176,0.1);
+  background: rgba(130, 160, 255, 0.05);
+  box-shadow: 0 0 0 3px rgba(130, 160, 255, 0.1); /* Blue glow focus */
 }
 
-input::placeholder { 
-  color: var(--text-dim); 
-}
+input::placeholder { color: var(--text-dim); }
 
 /* Eye Visibility Toggle Button */
 .eye-btn {
@@ -274,7 +173,7 @@ input::placeholder {
   border: none;
   cursor: pointer;
   padding: 4px;
-  color: #ffffff;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -282,54 +181,33 @@ input::placeholder {
   z-index: 2;
 }
 
-.eye-btn:hover { 
-  color: var(--accent); 
-}
+.eye-btn:hover { color: var(--accent); }
 
 .eye-btn svg {
-  width: 18px; 
-  height: 18px;
+  width: 18px; height: 18px;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  pointer-events: none;
-  display: block;
 }
 
 /* Password Strength Indicator */
 .strength-bar { 
-  display: flex; 
-  gap: 4px; 
-  margin-top: 8px; 
+  display: flex; gap: 4px; margin-top: 8px; 
 }
-
 .strength-seg {
-  flex: 1; 
-  height: 3px; 
-  border-radius: 2px;
+  flex: 1; height: 4px; border-radius: 2px;
   background: var(--border); 
-  transition: background 0.3s;
+  transition: background 0.3s ease;
 }
-
-.strength-seg.weak   { 
-  background: var(--danger); 
-}
-
-.strength-seg.medium { 
-  background: #f5a623; 
-}
-
-.strength-seg.strong { 
-  background: var(--accent); 
-}
+.strength-seg.weak { background: var(--danger); }
+.strength-seg.medium { background: #f5a623; }
+.strength-seg.strong { background: var(--accent); } /* Glows blue on strong */
 
 .strength-label { 
-  font-size: 11px; 
-  color: var(--text-muted); 
-  margin-top: 4px; 
-  font-family: var(--mono); 
+  font-size: 11px; color: var(--text-muted); 
+  margin-top: 6px; font-family: var(--mono); 
 }
 
 /* Action Buttons */
@@ -337,169 +215,67 @@ input::placeholder {
   width: 100%; 
   padding: 14px; 
   background: var(--accent); 
-  color: #000;
+  color: #0b0f19; /* Dark text for contrast against the neon blue */
   border: none; 
   border-radius: 10px; 
-  font-family: var(--mono);
-  font-size: 13px; 
+  font-family: var(--sans);
+  font-size: 14px; 
   font-weight: 700; 
-  letter-spacing: 1px;
-  text-transform: uppercase; 
   cursor: pointer; 
   margin-top: 8px;
-  transition: opacity 0.2s, transform 0.1s;
-  position: relative; 
-  overflow: hidden;
+  transition: all 0.2s;
 }
 
-.btn-primary:hover:not(:disabled)  { 
-  opacity: 0.88; 
-}
+.btn-primary:hover:not(:disabled)  { background: #9db5ff; transform: translateY(-1px); }
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.btn-primary:active:not(:disabled) { 
-  transform: scale(0.99); 
-}
-
-.btn-primary:disabled { 
-  opacity: 0.4; 
-  cursor: not-allowed; 
-}
-
-@keyframes shimmer {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(100%); }
-}
-
-/* Alerts and Feedback */
+/* Alerts */
 .alert {
-  padding: 12px 14px; 
-  border-radius: 10px; 
-  font-size: 13px;
-  margin-top: 16px; 
-  display: none;
-  align-items: flex-start; 
-  gap: 10px; 
-  line-height: 1.5;
+  padding: 12px 14px; border-radius: 10px; font-size: 13px;
+  margin-top: 16px; display: none; align-items: flex-start; gap: 10px; line-height: 1.5;
 }
-
-.alert.show { 
-  display: flex; 
-  animation: fadeSlideIn 0.3s ease both; 
-}
-
-.alert-success {
-  background: rgba(79,255,176,0.08);
-  border: 1px solid rgba(79,255,176,0.25);
-  color: var(--accent);
-}
-
-.alert-error {
-  background: rgba(255,79,106,0.08);
-  border: 1px solid rgba(255,79,106,0.25);
-  color: var(--danger);
-}
-
-/* Spinner Animation */
-.spinner {
-  display: inline-block; 
-  width: 13px; 
-  height: 13px;
-  border: 2px solid rgba(0,0,0,0.2); 
-  border-top-color: #000;
-  border-radius: 50%; 
-  animation: spin 0.6s linear infinite;
-  vertical-align: middle; 
-  margin-right: 6px;
-}
-
-@keyframes spin { 
-  to { transform: rotate(360deg); } 
-}
-
-/* Responsive Design */
-@media (max-width: 600px) { 
-  .card { 
-    padding: 26px 20px; 
-  } 
-}
+.alert.show { display: flex; animation: fadeSlideIn 0.3s ease both; }
+.alert-success { background: rgba(130, 160, 255, 0.08); border: 1px solid rgba(130, 160, 255, 0.25); color: var(--accent); }
+.alert-error { background: rgba(255,79,106,0.08); border: 1px solid rgba(255,79,106,0.25); color: var(--danger); }
 
 .exit-btn {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 24px;
-  cursor: pointer;
-  transition: color 0.2s;
+  position: absolute; top: 15px; right: 15px; background: none; border: none;
+  color: var(--text-muted); font-size: 24px; cursor: pointer; transition: color 0.2s;
 }
-
-.exit-btn:hover {
-  color: var(--danger);
-}
-
-.auth-modal-card {
-  position: relative; /* Essential for positioning the exit button */
-  animation: modalPop 0.3s cubic-bezier(0.17, 0.89, 0.32, 1.28);
-}
-
-/* Fix for the giant stretching modal */
-.auth-modal-card {
-  width: 100%;
-  max-width: 420px; /* This forces it to be a compact card */
-  margin: 0 auto;
-  position: relative;
-  background: #111318; /* Matches your dark theme */
-  border: 1px solid #1e2330;
-  border-radius: 14px;
-  padding: 36px 36px 32px;
-  box-shadow: 0 0 40px rgba(79,255,176,0.06);
-  z-index: 2001; /* Keeps it above the blur overlay */
-}
-
-/* Ensure the blur overlay centers the card perfectly */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 2000;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.6); /* Slightly darker to make the card pop */
-}
-
-/* Password Strength Indicator */
-.strength-bar { 
-  display: flex; 
-  gap: 4px; 
-  margin-top: 8px; 
-}
-
-.strength-seg {
-  flex: 1; 
-  height: 3px; 
-  border-radius: 2px;
-  background: var(--border, #1e2330); /* Dark empty state */
-  transition: background 0.3s ease;
-}
-
-/* Color states for the bars */
-.strength-seg.weak { background: #ff4f6a; }   /* Red */
-.strength-seg.medium { background: #f5a623; } /* Orange */
-.strength-seg.strong { background: #4fffb0; } /* Neon Mint */
-
-.strength-label { 
-  font-size: 11px; 
-  color: var(--text-muted, #6b7280); 
-  margin-top: 4px; 
-  font-family: 'Space Mono', monospace; 
-}
+.exit-btn:hover { color: var(--danger); }
 
 @keyframes modalPop {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
+}
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Admin Mode Toggle Link --- */
+.admin-toggle-wrap {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.admin-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--mono); /* Using the monospace font for a terminal vibe */
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.admin-toggle-btn:hover {
+  color: #f59e0b; /* That tactical amber color */
+  text-decoration: underline;
+  background: rgba(245, 158, 11, 0.1);
 }
