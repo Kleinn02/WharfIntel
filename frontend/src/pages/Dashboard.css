@@ -477,3 +477,88 @@
   cursor: not-allowed;
   border-style: dashed !important;
 }
+
+/* ==========================================================================
+   COMMAND CENTER MAP OVERLAYS & MODALS
+   ========================================================================== */
+
+/* 🔥 The Tactical Radar Grid */
+.radar-grid-overlay {
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  width: 100vw; 
+  height: 100vh; 
+  pointer-events: none; 
+  z-index: 400; 
+  background-image: linear-gradient(rgba(130, 160, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(130, 160, 255, 0.04) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+.dashboard-wrapper.light-mode .radar-grid-overlay {
+  background-image: linear-gradient(rgba(99, 102, 241, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(99, 102, 241, 0.15) 1px, transparent 1px);
+}
+
+/* 🔥 The Threat-Level Red Logout Modal */
+.command-center-logout {
+  background: #0f1219 !important; /* Deep dark cyber panel */
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+  box-shadow: 0 0 50px rgba(239, 68, 68, 0.15) !important;
+  border-radius: 16px !important;
+  padding: 32px 40px !important;
+  max-width: 420px !important;
+}
+
+.command-center-logout h3 { 
+  margin: 0 0 10px 0; 
+  color: #fff; 
+  font-size: 22px; 
+  font-family: var(--font-sans); 
+  font-weight: 600; 
+}
+
+.command-center-logout p { 
+  color: #94a3b8; 
+  font-size: 15px; 
+  margin: 0 0 28px 0; 
+  line-height: 1.5; 
+}
+
+.command-center-logout .modal-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 0;
+}
+
+/* Ghost Cancel Button */
+.command-center-logout .btn-cancel {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e8eaf0;
+  border-radius: 8px;
+  font-family: var(--font-sans);
+  transition: all 0.2s;
+}
+.command-center-logout .btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Glowing Confirm Button */
+.btn-confirm-red {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  color: #ef4444;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 1;
+  font-family: var(--font-sans);
+  transition: all 0.3s ease;
+}
+.btn-confirm-red:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+  text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}

@@ -127,12 +127,18 @@ const MoonIcon = () => (
 
 const Dashboard = () => {
   const navigate = useNavigate(); 
+  
+  // --- MAP CONSTRAINTS ---
+  const SEA_BOUNDS = [[-15.0, 90.0], [30.0, 150.0]];
+  const SEA_CENTER = [5.0, 120.0];
+  
+  // 🔥 THE FIX: Uncommented this line! The popup math needs this to calculate Distance to Port!
   const portPosition = [7.284, 125.681]; 
   
   const [vessels, setVessels] = useState([]);
   const [forecastData, setForecastData] = useState([]);
-  const [congestionZones, setCongestionZones] = useState([]); // 🔥 STRIKE 2
-  const [riskTrend, setRiskTrend] = useState('CALCULATING...'); // Add this!
+  const [congestionZones, setCongestionZones] = useState([]); 
+  const [riskTrend, setRiskTrend] = useState('CALCULATING...'); 
   const [activeMenu, setActiveMenu] = useState('live_map'); 
   const [searchTerm, setSearchTerm] = useState(''); 
   const [filterStatus, setFilterStatus] = useState('ALL'); 
@@ -142,6 +148,8 @@ const Dashboard = () => {
   const [logModalVessel, setLogModalVessel] = useState(null); 
   const [showProfile, setShowProfile] = useState(false);
   const currentUsername = localStorage.getItem('username') || 'Commander';
+
+  // ... (The rest of your code stays exactly the same!)
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -239,13 +247,13 @@ const Dashboard = () => {
       )}
 
       {showLogout && (
-        <div className="logout-overlay">
-          <div className="logout-modal">
+        <div className="logout-overlay" onClick={() => setShowLogout(false)}>
+          <div className="logout-modal command-center-logout" onClick={e => e.stopPropagation()}>
             <h3>Disconnect Session?</h3>
             <p>Are you sure you want to sign out of the Command Center?</p>
             <div className="modal-actions">
-              <button className="btn-cancel" onClick={() => setShowLogout(false)}>Cancel</button>
-              <button className="btn-confirm" onClick={handleSignOut}>Confirm</button>
+              <button className="btn-cancel" onClick={() => setShowLogout(false)}>CANCEL</button>
+              <button className="btn-confirm-red" onClick={handleSignOut}>CONFIRM</button>
             </div>
           </div>
         </div>
@@ -339,7 +347,20 @@ const Dashboard = () => {
       </aside>
       
       <main className="map-view">
-        <MapContainer center={portPosition} zoom={14} className="leaflet-container" zoomControl={false} zoomSnap={2} zoomDelta={2}>
+        <div className="radar-grid-overlay"></div>
+        {/* 🔥 UPDATED MAP CONTAINER: Default SEA Center, Bounds, and Zoom */}
+        <MapContainer 
+          center={SEA_CENTER} 
+          zoom={5} 
+          minZoom={4} 
+          maxZoom={18} 
+          maxBounds={SEA_BOUNDS} 
+          maxBoundsViscosity={1.0} 
+          className="leaflet-container" 
+          zoomControl={false} 
+          zoomSnap={0.5} 
+          zoomDelta={0.5}
+        >
           <TileLayer url={isLightMode ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"} attribution='&copy; CARTO' />
           
           <CustomMapControls />

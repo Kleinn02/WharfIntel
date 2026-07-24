@@ -84,6 +84,20 @@
   overflow: hidden; /* 🔥 FIX: Locks the panel size */
 }
 
+/* 🔥 THE WARP GLIDE FIX: Smoothly interpolate Leaflet marker movements */
+.sim-vessel-icon {
+  /* Tells the browser to smoothly animate coordinate jumps over exactly 1 second */
+  transition: transform 1s linear !important;
+  will-change: transform;
+}
+
+/* CRITICAL: We must disable the smooth glide when the user zooms the map, 
+   otherwise the icons will float away from the map tiles temporarily! */
+.leaflet-zoom-anim .sim-vessel-icon,
+.leaflet-pan-anim .sim-vessel-icon {
+  transition: none !important;
+}
+
 .floating-side-panel::-webkit-scrollbar { width: 4px; }
 .floating-side-panel::-webkit-scrollbar-thumb { background: var(--border-heavy); border-radius: 4px; }
 @keyframes slideInRight { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
@@ -140,7 +154,7 @@
 @keyframes waitingPulse { 0% { opacity: 0.6; box-shadow: inset 0 0 5px rgba(245, 158, 11, 0); } 100% { opacity: 1; box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.8); } }
 
 /* 9. Shopee Style Timeline */
-.shopee-timeline { display: flex; flex-direction: column; padding: 10px 5px; margin-top: 15px; }
+.shopee-timeline { display: flex; flex-direction: column-reverse; padding: 10px 5px; margin-top: 15px; }
 .timeline-step { display: flex; position: relative; padding-bottom: 25px; opacity: 0.4; transition: all 0.3s ease; }
 .timeline-step.completed { opacity: 1; }
 .step-timestamp { width: 45px; display: flex; flex-direction: column; align-items: flex-end; padding-right: 12px; font-family: var(--font-sans); }
@@ -158,9 +172,25 @@
 .timeline-step.completed.truck-step .step-line { background-color: var(--accent-blue) !important; }
 .timeline-step.completed.ship-step .step-dot { background-color: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6); }
 .timeline-step.completed.ship-step .step-line { background-color: #3b82f6; }
+/* 🔥 THE FIX: In column-reverse, the first DOM child is visually at the bottom! */
+.shopee-timeline .timeline-step:first-child .step-line { display: none; }
+.shopee-timeline .timeline-step:last-child .step-line { display: block; }
 
 /* 10. Diegetic Terminal */
-.tactical-terminal { position: absolute; bottom: 30px; left: 25px; width: 320px; height: 140px; background: rgba(5, 7, 10, 0.8); border: 1px solid var(--border-color); border-left: 3px solid var(--accent-blue); border-radius: 8px; padding: 10px; z-index: 2000; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; backdrop-filter: blur(10px); }
+.tactical-terminal { position: absolute; bottom: 30px; left: 25px; width: 320px; height: 140px; background: rgba(5, 7, 10, 0.8); border: 1px solid var(--border-color); border-left: 3px solid var(--accent-blue); border-radius: 8px; padding: 10px; z-index: 2000; display: flex; flex-direction: column; overflow-y: auto; backdrop-filter: blur(10px); }
+
+/* 🔥 Terminal Scrollbar */
+.tactical-terminal::-webkit-scrollbar { width: 4px; }
+.tactical-terminal::-webkit-scrollbar-thumb { background: rgba(130, 160, 255, 0.3); border-radius: 4px; }
+
+/* 🔥 The Target HUD Overlay (Replaced Minimap) */
+.target-hud-overlay {
+  position: absolute; top: 25px; left: 25px; width: 280px;
+  background: var(--bg-panel); border: 1px solid var(--border-color);
+  border-radius: 12px; z-index: 1000; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: popoverFade 0.3s ease-out; backdrop-filter: blur(16px);
+}
+
 .terminal-line { font-family: var(--font-mono); font-size: 10px; color: var(--accent-blue); margin: 2px 0; opacity: 0.8; animation: typeLine 0.2s ease-out; }
 .terminal-line .timestamp { color: var(--text-muted); margin-right: 8px; }
 .terminal-line.highlight { color: var(--accent-green) !important; font-weight: bold; }
@@ -178,6 +208,8 @@
 
 /* 12. Modals (Exit, Chaos) */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); z-index: 9999; display: flex; justify-content: center; align-items: center; }
+
+/* EXIT CONFIRMATION MODAL (Restored) */
 .confirmation-modal { background: var(--bg-panel); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 0 40px rgba(239, 68, 68, 0.1); }
 .confirmation-modal h3 { margin: 0 0 12px 0; color: var(--text-primary); font-size: 20px; }
 .confirmation-modal p { color: var(--text-secondary); font-size: 14px; margin: 0 0 24px 0; line-height: 1.5; }
@@ -187,13 +219,85 @@
 .btn-cancel:hover { background: var(--bg-card); }
 .btn-confirm-exit { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.5); color: #ef4444; }
 .btn-confirm-exit:hover { background: #ef4444; color: #fff; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
-.chaos-modal { background: var(--bg-panel) !important; border: 2px solid #f1c40f; border-radius: 16px; padding: 40px; width: 500px; text-align: center; position: relative; box-shadow: 0 0 50px rgba(241, 196, 15, 0.2); animation: modalShake 0.5s infinite alternate; }
+
+/* 🔥 ELITE TACTICAL MODAL DESIGN (New) */
+.chaos-modal { 
+  background: rgba(10, 12, 16, 0.95) !important; 
+  backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.1); 
+  border-top: 4px solid #f1c40f; 
+  border-radius: 16px; 
+  padding: 40px; 
+  width: 500px; 
+  text-align: center; 
+  position: relative; 
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); 
+}
 @keyframes modalShake { from { transform: rotate(-0.5deg); } to { transform: rotate(0.5deg); } }
-.warning-title { font-family: var(--font-mono); letter-spacing: 2px; color: #ffc107; }
-.chaos-actions { display: flex; flex-direction: column; gap: 15px; margin-top: 30px; }
-.btn-push { background: linear-gradient(135deg, #e67e22, #d35400); color: white; border: none; padding: 20px; border-radius: 12px; font-weight: bold; cursor: pointer; display: flex; flex-direction: column; align-items: center; transition: transform 0.2s, box-shadow 0.2s; }
-.btn-push:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(230, 126, 34, 0.4); }
-.btn-subtext { font-size: 10px; opacity: 0.8; margin-top: 4px; }
+
+/* 🔥 THE SCRAMBLE FIX: Explicit line-height prevents letters from crushing */
+.warning-title { 
+  font-family: var(--font-mono); 
+  letter-spacing: 3px; 
+  line-height: 1.4 !important; 
+  margin: 0 0 15px 0 !important;
+  font-size: 28px;
+  text-transform: uppercase;
+}
+
+.chaos-actions { display: flex; gap: 15px; margin-top: 30px; }
+
+/* 🔥 MODERN GHOST BUTTONS WITH GLOW HOVERS */
+.btn-push { 
+  background: rgba(255, 255, 255, 0.02); 
+  color: #fff; 
+  border: 1px solid rgba(255, 255, 255, 0.1); 
+  padding: 18px 12px; 
+  border-radius: 12px; 
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700; 
+  letter-spacing: 1px;
+  cursor: pointer; 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); 
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-push:hover { transform: translateY(-4px); }
+
+.btn-subtext { 
+  font-size: 11px; 
+  opacity: 0.7; 
+  margin-top: 8px; 
+  font-family: var(--font-sans);
+  font-weight: normal;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+/* Color Themes for the Tactical Buttons */
+.btn-push.danger-btn { border-color: rgba(231, 76, 60, 0.4); color: #ff7675; }
+.btn-push.danger-btn:hover { background: rgba(231, 76, 60, 0.15); border-color: #e74c3c; box-shadow: 0 10px 25px rgba(231, 76, 60, 0.3); color: #fff; }
+
+.btn-push.warning-btn { border-color: rgba(243, 156, 18, 0.4); color: #f39c12; }
+.btn-push.warning-btn:hover { background: rgba(243, 156, 18, 0.15); border-color: #f1c40f; box-shadow: 0 10px 25px rgba(243, 156, 18, 0.3); color: #fff; }
+
+.btn-push.info-btn { border-color: rgba(52, 152, 219, 0.4); color: #74b9ff; }
+.btn-push.info-btn:hover { background: rgba(52, 152, 219, 0.15); border-color: #3498db; box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3); color: #fff; }
+
+.btn-push.neutral-btn { border-color: rgba(149, 165, 166, 0.4); color: #bdc3c7; }
+.btn-push.neutral-btn:hover { background: rgba(149, 165, 166, 0.15); border-color: #95a5a6; box-shadow: 0 10px 25px rgba(149, 165, 166, 0.2); color: #fff; }
+
+.btn-cancel-tactical {
+  background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color); width: 100%; padding: 14px; margin-top: 25px; border-radius: 8px; font-family: var(--font-mono); font-weight: bold; text-transform: uppercase; letter-spacing: 2px; cursor: pointer; transition: all 0.2s;
+}
+.btn-cancel-tactical:hover { background: rgba(255, 255, 255, 0.05); color: #fff; border-color: var(--text-secondary); }
+
+/* RELAUNCH MAP POPUP UI (Restored) */
 .relaunch-container { margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(241, 196, 15, 0.3); text-align: center; }
 .relaunch-warning-text { color: #f59e0b !important; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 10px; }
 .btn-launch-sim.relaunch-btn { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid #f59e0b; padding: 8px 12px; font-size: 12px; border-radius: 6px; width: 100%; transition: all 0.2s ease-in-out; cursor: pointer; }
@@ -261,3 +365,203 @@
 .sim-wrapper.light-mode .action-btn:hover:not(.disabled):not(.active-blue) { background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.4); }
 .sim-wrapper.light-mode .btn-launch-sim { color: #fff; }
 .sim-wrapper.light-mode .time-opt-btn.active-blue { color: #fff !important; }
+
+/* 🔥 The Cinematic AUTO Toggle Button */
+.btn-auto-toggle {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-auto-toggle:hover {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+  box-shadow: 0 0 10px rgba(130, 160, 255, 0.2);
+}
+.btn-auto-toggle.active {
+  background: rgba(130, 160, 255, 0.15);
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 15px rgba(130, 160, 255, 0.4);
+  animation: autoPulse 2s infinite;
+}
+
+@keyframes autoPulse {
+  0% { box-shadow: 0 0 0 0 rgba(130, 160, 255, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(130, 160, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(130, 160, 255, 0); }
+}
+
+/* ==========================================================================
+   15. BLACK MARKET BOOSTER SHOP (UI ONLY)
+   ========================================================================== */
+
+/* The Trigger Button (Top Left) */
+.sim-booster-btn {
+  position: absolute;
+  top: 28px;
+  left: 300px; /* Positions it right next to the exit button */
+  background: rgba(241, 196, 15, 0.1);
+  border: 1px solid rgba(241, 196, 15, 0.4);
+  color: #f1c40f;
+  height: 45px;
+  padding: 0 20px;
+  border-radius: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  z-index: 2000;
+  backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 0 15px rgba(241, 196, 15, 0.1);
+}
+.sim-booster-btn:hover {
+  background: #f1c40f;
+  color: #000;
+  box-shadow: 0 0 20px rgba(241, 196, 15, 0.4);
+  transform: translateY(-2px);
+}
+
+/* The Modal Container */
+.boosters-modal {
+  background: var(--bg-panel);
+  backdrop-filter: blur(25px);
+  border: 1px solid rgba(130, 160, 255, 0.2);
+  border-top: 4px solid #f1c40f;
+  border-radius: 16px;
+  padding: 30px;
+  width: 100%;
+  max-width: 600px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  animation: modalSlideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modalSlideDown {
+  from { opacity: 0; transform: translateY(-30px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.boosters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.close-booster-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.close-booster-btn:hover { color: #ef4444; }
+
+/* The Grid & Cards */
+.boosters-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.booster-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 15px;
+  border-radius: 12px;
+  transition: all 0.2s;
+}
+.booster-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(241, 196, 15, 0.3);
+}
+
+.booster-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.booster-info { flex: 1; text-align: left; }
+.booster-info h4 { margin: 0 0 5px 0; color: var(--text-primary); font-size: 15px; text-transform: uppercase; font-family: var(--font-mono); }
+.booster-info p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+
+.booster-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.booster-price {
+  font-family: var(--font-mono);
+  font-weight: bold;
+  font-size: 14px;
+  color: #3498db;
+}
+.booster-price.cost-rep { color: #e74c3c; }
+
+.booster-action button {
+  background: rgba(52, 152, 219, 0.1);
+  color: #3498db;
+  border: 1px solid #3498db;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+.booster-action button:hover {
+  background: #3498db;
+  color: #fff;
+  box-shadow: 0 0 15px rgba(52, 152, 219, 0.4);
+}
+
+.booster-action button.sell-btn {
+  background: rgba(46, 204, 113, 0.1);
+  color: #2ecc71;
+  border-color: #2ecc71;
+}
+.booster-action button.sell-btn:hover {
+  background: #2ecc71;
+  color: #fff;
+  box-shadow: 0 0 15px rgba(46, 204, 113, 0.4);
+}
+
+/* Light Mode Overrides for Boosters */
+.sim-wrapper.light-mode .sim-booster-btn {
+  background: #fff; color: #d4ac0d; border-color: rgba(241, 196, 15, 0.5); box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+.sim-wrapper.light-mode .sim-booster-btn:hover { background: #f1c40f; color: #fff; }
+.sim-wrapper.light-mode .boosters-modal { background: rgba(255, 255, 255, 0.95); border-color: rgba(0,0,0,0.1); }
+.sim-wrapper.light-mode .boosters-header h2 { color: #d4ac0d !important; }
+.sim-wrapper.light-mode .booster-card { background: #f8f9fa; border-color: #e5e7eb; }
+.sim-wrapper.light-mode .booster-card:hover { border-color: #f1c40f; background: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+.sim-wrapper.light-mode .booster-info h4 { color: #111827; }

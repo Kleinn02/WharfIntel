@@ -275,7 +275,6 @@ input::placeholder { color: var(--text-dim); }
 }
 
 .admin-toggle-btn:hover {
-  color: #f59e0b; /* That tactical amber color */
+  color: #82a0ff; /* That tactical amber color */
   text-decoration: underline;
-  background: rgba(245, 158, 11, 0.1);
 }

@@ -12,6 +12,9 @@ class User(Base):
     hashed_password = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # 🔌 ADD THIS LINE SO SQLALCHEMY RECOGNIZES THE COLUMNS YOU ADDED IN PGADMIN
+    role = Column(String, default="commander")
+
     # --- PERSISTENT PROGRESS FIELDS ---
     money = Column(Float, default=200000.0)
     reputation = Column(Integer, default=50)

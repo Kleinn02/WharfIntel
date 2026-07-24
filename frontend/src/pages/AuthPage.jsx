@@ -60,19 +60,33 @@ const AuthPage = ({ initialMode, onClose }) => {
       const data = await response.json();
       
       if (response.ok) {
-        setIsSuccess(true);
-        setMessage(isLogin ? "Login Successful! Redirecting..." : "Account created successfully! You can now log in.");
-        
         if (isLogin) {
-          localStorage.setItem('username', data.user); 
-          // 🔥 Route to Admin panel if in Admin Mode, otherwise to Dashboard
+          // 🔥 NEW LOGIC: Check roles before allowing entry
+          if (isAdminMode && data.role !== 'admin') {
+            setIsSuccess(false);
+            setMessage("ACCESS DENIED: Standard commanders cannot access System Overwatch.");
+            localStorage.clear(); // Keep them locked out completely
+            return;
+          }
+
+          setIsSuccess(true);
+          setMessage("Login Successful! Redirecting...");
+          
+          localStorage.setItem('username', data.user || username); // Fallback to state if data.user is missing
+          localStorage.setItem('role', data.role); // 🔥 Save role for Admin.jsx to check
+
           setTimeout(() => { 
-            if (isAdminMode) {
-              navigate('/admin');
+            if (data.role === 'admin') {
+              navigate('/admin'); // Admins always go to admin panel
             } else {
-              navigate('/dashboard'); 
+              navigate('/dashboard'); // Commanders always go to normal dashboard
             }
           }, 600);
+
+          setUsername(""); setPassword(""); setConfirmPassword("");
+        } else {
+          setIsSuccess(true);
+          setMessage("Account created successfully! You can now log in.");
           setUsername(""); setPassword(""); setConfirmPassword("");
           setTimeout(() => {
             setIsLogin(true);
@@ -206,13 +220,11 @@ const AuthPage = ({ initialMode, onClose }) => {
           </div>
         )}
 
-        {/* This wrapper forces the button to the bottom if the form is short */}
         <div className="form-footer" style={{ marginTop: 'auto' }}>
           <button type="submit" className="btn-primary">
             {isLogin ? "Sign In" : "Create Account"}
           </button>
 
-          {/* --- NEW ADMIN LOGIN LINK --- */}
           {isLogin && (
             <div className="admin-toggle-wrap">
               <button 

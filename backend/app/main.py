@@ -9,10 +9,9 @@ import websockets
 import json
 import random
 import numpy as np
-import heapq
 import math
-import joblib
 import os
+import joblib
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.cluster import DBSCAN # 🔥 STRIKE 1: Import DBSCAN
@@ -21,25 +20,30 @@ from . import models, database, pathfinder
 from .database import engine, get_db, Base
 from .models import User, Shipment
 from .auth import get_password_hash, verify_password
+# 🔥 NEW: Added WebSocket, WebSocketDisconnect, and BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 
 # --- PRE-TRAINED ML ENGINES ---
 print("🧠 Booting WharfIntel Predictive ML Engines...")
 
-# 1. Load the Kaggle-Trained ETA Brain
-if os.path.exists("transit_rf_model.joblib"):
-    transit_rf_model = joblib.load("transit_rf_model.joblib")
-    print("✅ ETA Model Loaded from Disk (Real AIS Data)")
-else:
-    print("⚠️ WARNING: transit_rf_model.joblib not found. Run train_model.py first!")
-    # Fallback just in case
-    transit_rf_model = RandomForestRegressor(n_estimators=10, random_state=42)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 2. Keep the Congestion Model (We can upgrade this one later if needed)
-congestion_rf_model = RandomForestRegressor(n_estimators=50, random_state=42)
-X_cong = np.array([[0, 0, 300], [1, 1, 600], [2, 0, 900], [3, 2, 1200], [4, 1, 1500], [5, 0, 500], [6, 1, 800]])
-y_cong = np.array([320, 650, 910, 1250, 1550, 510, 840])
-congestion_rf_model.fit(X_cong, y_cong)
-print("✅ Congestion Model Online.")
+# Safely load the Transit model
+try:
+    transit_rf_model = joblib.load(os.path.join(BASE_DIR, "transit_rf_model.joblib"))
+except:
+    transit_rf_model = None
+
+# Safely load all 3 Congestion Models into a dictionary
+CONGESTION_BRAINS = {}
+try:
+    CONGESTION_BRAINS["low"] = joblib.load(os.path.join(BASE_DIR, "low_density_rf_model.joblib"))
+    CONGESTION_BRAINS["medium"] = joblib.load(os.path.join(BASE_DIR, "medium_density_rf_model.joblib"))
+    CONGESTION_BRAINS["high"] = joblib.load(os.path.join(BASE_DIR, "global_hub_rf_model.joblib"))
+    print("✅ All 3 Context-Aware Congestion Engines Loaded")
+except Exception as e:
+    print(f"❌ WARNING: Multi-Brain loading failed! Error: {e}")
 
 # --- BACKEND SIMULATION CONSTANTS ---
 DESTINATION_PRICING = {
@@ -51,78 +55,42 @@ DESTINATION_PRICING = {
     "Yangon, Myanmar": 17000, "Dili, Timor-Leste": 6000
 }
 
-# --- A-STAR MARITIME NAVMESH ---
-WAYPOINTS = {
-    "Panabo North Facility": (7.300, 125.650),
-    "Central Cold Storage": (7.285, 125.660),
-    "Export Processing Zone": (7.270, 125.680),
-    "Road_Curve_1": (7.290, 125.658),
-    "Road_Curve_2": (7.280, 125.670),
-
-    "DAVAO_PORT": (7.284, 125.681),
-    "WP_SARANGANI": (5.3, 125.4),        # South of Mindanao
-    "WP_SIBUTU": (4.8, 119.4),           # Near Tawi-Tawi
-    "WP_BALABAC": (7.5, 117.0),          # South of Palawan
-    "WP_SOUTH_CHINA_SEA": (12.0, 114.0),
-    "WP_PHILIPPINE_SEA": (10.5, 127.5),
-    "WP_MALACCA": (3.0, 101.0),
-
-    "Singapore": (1.290, 103.850),
-    "Bangkok, Thailand": (13.756, 100.501),
-    "Manila, Philippines": (14.599, 120.984),
-    "Jakarta, Indonesia": (-6.208, 106.845),
-    "Ho Chi Minh, Vietnam": (10.823, 106.629),
-    "Yangon, Myanmar": (16.840, 96.145),
-    "Muara, Brunei": (5.027, 115.064),
-    "Dili, Timor-Leste": (-8.558, 125.573)
-}
-
-GRAPH = {
-    "Panabo North Facility": ["Road_Curve_1"],
-    "Central Cold Storage": ["Road_Curve_1"],
-    "Road_Curve_1": ["Road_Curve_2"],
-    "Road_Curve_2": ["Export Processing Zone"],
-    "Export Processing Zone": ["DAVAO_PORT"],
-
-    "DAVAO_PORT": ["WP_SARANGANI", "WP_PHILIPPINE_SEA"],
-    "WP_PHILIPPINE_SEA": ["Manila, Philippines"],
-    "WP_SARANGANI": ["WP_SIBUTU", "Jakarta, Indonesia", "Dili, Timor-Leste"],
-    "WP_SIBUTU": ["WP_BALABAC", "Manila, Philippines", "Muara, Brunei"],
-    "WP_BALABAC": ["WP_SOUTH_CHINA_SEA", "WP_MALACCA"],
-    "WP_SOUTH_CHINA_SEA": ["Ho Chi Minh, Vietnam", "Bangkok, Thailand", "Manila, Philippines"],
-    "WP_MALACCA": ["Singapore", "Yangon, Myanmar"]
-}
-
-def haversine(coord1, coord2):
-    return math.sqrt((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)
-
-def a_star_route(start_node, target_node):
-    if target_node not in WAYPOINTS: 
-        return [WAYPOINTS[start_node], (0,0)] # Fallback
-        
-    queue = [(0, start_node, [])]
-    seen = set()
-    
-    while queue:
-        (cost, current, path) = heapq.heappop(queue)
-        if current in seen: continue
-        seen.add(current)
-        path = path + [WAYPOINTS[current]]
-        
-        if current == target_node: return path
-            
-        for next_node in GRAPH.get(current, []):
-            if next_node in seen: continue
-            g_cost = cost + haversine(WAYPOINTS[current], WAYPOINTS[next_node])
-            f_cost = g_cost + haversine(WAYPOINTS[next_node], WAYPOINTS[target_node])
-            heapq.heappush(queue, (f_cost, next_node, path))
-            
-    return [WAYPOINTS[start_node], WAYPOINTS[target_node]] # Fallback if no path
-
 # Initialize Database
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="WharfIntel Command Center API")
+
+# ==========================================
+# 🔥 GLOBAL MULTIPLAYER WEBSOCKET ENGINE
+# ==========================================
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
+manager = ConnectionManager()
+
+@app.websocket("/ws/simulation")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 app.add_middleware(
     CORSMiddleware,
@@ -230,7 +198,19 @@ def login(user: UserAuth, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.username == user.username).first()
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"message": "Login successful", "user": db_user.username}
+    
+    # 🛡️ BULLETPROOF ROLE CHECK: Bypasses model syncing issues
+    user_role = getattr(db_user, 'role', None)
+    
+    # Fallback if your app/models.py hasn't mapped the column yet
+    if user_role is None:
+        user_role = "admin" if db_user.username == "PJ Teves" else "commander"
+    
+    return {
+        "message": "Login successful", 
+        "user": db_user.username,
+        "role": user_role
+    }
 
 @app.put("/api/user/{username}/password")
 def update_password(username: str, data: PasswordUpdate, db: Session = Depends(get_db)):
@@ -303,29 +283,50 @@ def get_live_radar():
     # 🔥 BUMP TO 1000: Leaflet MarkerCluster can handle this smoothly.
     return list(LIVE_VESSELS.values())[:1000]
 
-@app.get("/api/ticketing/active")
-def get_user_exports(username: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
-    if not user: return []
-    return db.query(Shipment).filter(Shipment.user_id == user.id).all()
+# 🔥 ROUTE HARMONIZATION: Changed endpoint path to match Admin.jsx tracking requests
+@app.get("/api/admin/ticketing/active")
+def get_all_active_exports(db: Session = Depends(get_db)):
+    shipments = db.query(Shipment).all()
+    result = []
+    for s in shipments:
+        user = db.query(User).filter(User.id == s.user_id).first()
+        result.append({
+            "id": s.id,
+            "cargo_name": s.cargo_name,
+            "scale": s.scale,
+            "category": s.category,
+            "destination_country": s.destination_country,
+            "route_waypoints": s.route_waypoints,
+            "departure_time": s.departure_time,
+            "total_duration_ms": s.total_duration_ms,
+            "status": s.status,
+            "storm_event_handled": s.storm_event_handled,
+            "shelter_count": s.shelter_count,
+            "storm_time": s.storm_time,
+            "commander": user.username if user else "Unknown"
+        })
+    return result
 
 @app.post("/api/ticketing/create")
-def initiate_export(ticket: ShipmentCreate, db: Session = Depends(get_db)):
+def initiate_export(ticket: ShipmentCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == ticket.username).first()
-    cost = DESTINATION_PRICING.get(ticket.destination_country, 0)
+    # 🔥 DYNAMIC PRICING: Scale cost by weight (e.g., 5000kg = 5x multiplier)
+    base_cost = DESTINATION_PRICING.get(ticket.destination_country, 0)
+    weight_multiplier = ticket.weight_kg / 1000.0
+    cost = int(base_cost * weight_multiplier)
 
     if user.money < cost:
         raise HTTPException(status_code=400, detail="Insufficient persistent credits")
-
+    
     start_time_str = ticket.departure_time
     departure_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00')) if start_time_str else datetime.utcnow()
 
-    # 🔥 DYNAMIC A-STAR ORIGIN ROUTING
+    # 🔥 DYNAMIC A-STAR ORIGIN ROUTING via Dedicated Module
     origin_facility = "Panabo North Facility" # Default for Electronics / Raw Materials
     if "Perishable" in ticket.category:
         origin_facility = "Central Cold Storage"
         
-    smart_route = a_star_route(origin_facility, ticket.destination_country)
+    smart_route = pathfinder.a_star_route(origin_facility, ticket.destination_country)
     
     # --- REPLACE THE HARDCODED TOTAL_DURATION WITH THIS ---
     base_distance = DESTINATION_PRICING.get(ticket.destination_country, 1000) / 10 
@@ -340,7 +341,8 @@ def initiate_export(ticket: ShipmentCreate, db: Session = Depends(get_db)):
 
     generated_storm_time = None
     if True: # ⚠️ STORM TIMING ⚠️
-        impact_offset_percent = 0.2 + (random.random() * 0.6)
+        # 🔥 DEEP OCEAN FIX: Force the storm to hit strictly between 30% and 75% of the trip
+        impact_offset_percent = random.uniform(0.30, 0.75) 
         offset_seconds = (total_duration / 1000) * impact_offset_percent
         generated_storm_time = departure_time + timedelta(seconds=offset_seconds)
     
@@ -350,6 +352,7 @@ def initiate_export(ticket: ShipmentCreate, db: Session = Depends(get_db)):
         weight_kg=ticket.weight_kg,
         destination_country=ticket.destination_country,
         scale=ticket.scale,
+        category=ticket.category,  # 🔥 THE 100% FIX: Actually save the category to the database!
         route_waypoints=smart_route,
         departure_time=departure_time,
         total_duration_ms=total_duration,
@@ -362,36 +365,77 @@ def initiate_export(ticket: ShipmentCreate, db: Session = Depends(get_db)):
     db.add(new_shipment)
     db.commit()
     db.refresh(new_shipment)
+
+    # 🔥 BROADCAST TO EVERYONE ON THE NETWORK
+    background_tasks.add_task(manager.broadcast, {
+        "event": "SYNC_MAP",
+        "commander": user.username,
+        "action": f"deployed a new vessel to {ticket.destination_country}"
+    })
     return {"user_money": user.money, "shipment_id": new_shipment.id, "storm_time": generated_storm_time}
 
+# Inside main.py
 @app.post("/api/ticketing/{ship_id}/relaunch")
 def relaunch_shipment(ship_id: int, data: dict, db: Session = Depends(get_db)):
     ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
     user = db.query(User).filter(User.username == data.get("username")).first()
-    relaunch_cost = DESTINATION_PRICING.get(ship.destination_country, 0) / 2
-
-    if user.money < relaunch_cost:
-        raise HTTPException(status_code=400, detail="Insufficient credits for relaunch")
-
-    start_time_str = data.get("departure_time")
-    ship.departure_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00')) if start_time_str else datetime.utcnow()
     
-    user.money -= relaunch_cost
+    choice = data.get("choice") 
+    current_idx = data.get("current_index", 0)
+    
+    safe_idx = max(0, min(current_idx, len(ship.route_waypoints) - 1))
+    current_coord = ship.route_waypoints[safe_idx]
+
+    # Find the nearest node in the dictionary to act as the starting point for recalculation
+    nearest_node = None
+    min_dist = float('inf')
+    for node_name, coords in pathfinder.WAYPOINTS.items():
+        dist = pathfinder.haversine(current_coord, coords)
+        if dist < min_dist:
+            min_dist = dist
+            nearest_node = node_name
+
+    if choice == 'REROUTE':
+        cost = DESTINATION_PRICING.get(ship.destination_country, 0) * 0.70
+        if user.money < cost:
+            raise HTTPException(status_code=400, detail="Insufficient credits for Reroute")
+        user.money -= cost
+        
+        if nearest_node:
+            avoid_nodes = []
+            if safe_idx + 1 < len(ship.route_waypoints):
+                next_coord = ship.route_waypoints[safe_idx + 1]
+                for n_name, n_coords in pathfinder.WAYPOINTS.items():
+                    if pathfinder.haversine(next_coord, n_coords) < 0.01:
+                        avoid_nodes.append(n_name)
+                        break 
+            
+            # 🔥 REROUTE: Uses the Bi-Directional REROUTE_GRAPH
+            new_route = pathfinder.a_star_route(nearest_node, ship.destination_country, avoid_nodes, use_reroute_graph=True)
+            
+            # Preserve history and append the new path
+            ship.route_waypoints = ship.route_waypoints[:safe_idx] + [current_coord] + new_route
+            ship.total_duration_ms += 86400000.0 # +1 Day delay
+            
+    elif choice == 'WAIT':
+        if nearest_node:
+            # 🔥 THE FIX: We MUST rebuild the path because 'Tactical Retreat' overwrote the future waypoints!
+            # We run A* from the Safe Haven to the destination, using the STANDARD GRAPH (use_reroute_graph=False)
+            resumed_route = pathfinder.a_star_route(nearest_node, ship.destination_country, use_reroute_graph=False)
+            
+            # Preserve the history up to the safe index, then append the newly calculated rest of the journey
+            ship.route_waypoints = ship.route_waypoints[:safe_idx] + [current_coord] + resumed_route
+            
+        ship.total_duration_ms += 172800000.0 # +2 Days delay
+
     ship.status = "Outbound"
-    ship.storm_event_handled = False 
+    ship.storm_event_handled = True # Ensure it doesn't trigger another storm immediately
+    ship.storm_time = None 
     
-    # Reroll storm chance on relaunch
-    has_sonar = any(b["id"] == "boost_radar" for b in user.active_boosters)
-    if not has_sonar and random.random() < 0.40:
-        impact_offset_percent = 0.2 + (random.random() * 0.6)
-        offset_seconds = (ship.total_duration_ms / 1000) * impact_offset_percent
-        ship.storm_time = ship.departure_time + timedelta(seconds=offset_seconds)
-    else:
-        ship.storm_time = None
-
     db.commit()
-    return {"user_money": user.money, "departure_time": ship.departure_time}
+    return {"user_money": user.money, "status": ship.status}
 
+# Inside main.py
 @app.post("/api/ticketing/{ship_id}/resolve_event")
 def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
     ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
@@ -401,50 +445,113 @@ def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == data.get("username")).first()
     choice = data.get("choice")
     
-    # --- AUTHORITATIVE RESOLUTION LOGIC ---
-    if choice == 'SHELTER':
+    current_idx = data.get("current_index", 0)
+    safe_idx = max(0, min(current_idx, len(ship.route_waypoints) - 1))
+    current_coord = ship.route_waypoints[safe_idx]
+    
+    # 🔥 ELITE KNOWLEDGE: The Safe Haven Mapping Doctrine
+    SAFE_HAVENS = {
+        "WP_SULU_SEA_MAIN": "WP_SARANGANI",
+        "WP_SOUTH_CHINA_SEA_MAIN": "WP_SULU_SEA_MAIN",
+        "WP_CELEBES_SEA": "WP_SARANGANI",
+        "WP_SULU_SEA_SOUTH": "WP_CELEBES_SEA",
+        "WP_SOUTH_CHINA_SEA_SOUTH": "WP_SULU_SEA_SOUTH",
+        "WP_NATUNA_SEA": "WP_SOUTH_CHINA_SEA_MAIN",
+        "WP_MAKASSAR_STRAIT": "WP_SARANGANI",
+        "WP_JAVA_SEA": "WP_MAKASSAR_STRAIT",
+        "WP_MALACCA": "WP_NATUNA_SEA",
+        "WP_PHILIPPINE_SEA": "DAVAO_PORT",
+        "WP_DAVAO_GULF_SOUTH": "WP_DAVAO_GULF_NORTH",
+        "WP_SARANGANI": "WP_DAVAO_GULF_SOUTH",
+        "WP_THAILAND_ROUTE_1": "WP_SOUTH_CHINA_SEA_MAIN",
+        "WP_THAILAND_ROUTE_2": "WP_THAILAND_ROUTE_1",
+        "WP_JAKARTA_ROUTE_1": "WP_SARANGANI",
+        "WP_JAKARTA_ROUTE_2": "WP_MAKASSAR_STRAIT",
+        "WP_BRUNEI_ROUTE_1": "WP_SARANGANI",
+        "WP_BRUNEI_ROUTE_2": "WP_BRUNEI_ROUTE_1",
+        "WP_BRUNEI_ROUTE_3": "WP_BRUNEI_ROUTE_2",
+        "WP_BRUNEI_ROUTE_4": "WP_BRUNEI_ROUTE_3",
+        "WP_DILI_ROUTE_1": "WP_SARANGANI",
+        "WP_DILI_ROUTE_2": "WP_DILI_ROUTE_1",
+        "WP_MYANMAR_ROUTE_1": "WP_NATUNA_SEA",
+        "WP_MYANMAR_ROUTE_2": "WP_MYANMAR_ROUTE_1",
+        "WP_MYANMAR_ROUTE_3": "WP_MALACCA",
+        # 🔥 THE MISSING LINKS: Added the early journey nodes just in case!
+        "WP_DAVAO_GULF_NORTH": "DAVAO_PORT",
+        "DAVAO_PORT": "Export Processing Zone",
+    }
+    
+    if choice == 'RETREAT':
         ship.shelter_count += 1
         if ship.shelter_count >= 2:
-            # STRIKE TWO: Contract Terminated
             ship.status = "Failed"
             user.money -= 10000
             user.reputation -= 10
         else:
-            # STRIKE ONE: Sheltered
             ship.status = "Sheltered"
-            user.money -= 5000
+            user.money -= 2500 
             
+            # 1. Identify closest node
+            nearest_node = None
+            min_dist = float('inf')
+            for node_name, coords in pathfinder.WAYPOINTS.items():
+                dist = pathfinder.haversine(current_coord, coords)
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest_node = node_name
+            
+            # 2. Look up the Safe Haven
+            fallback_node = SAFE_HAVENS.get(nearest_node)
+            
+            # 3. Find exact coordinate
+            if fallback_node and fallback_node in pathfinder.WAYPOINTS:
+                safe_coord = pathfinder.WAYPOINTS[fallback_node]
+            else:
+                # Guaranteed safety net: step backward one dot
+                retreat_idx = max(0, safe_idx - 1)
+                safe_coord = ship.route_waypoints[retreat_idx]
+
+            # 🔥 THE 99.99% GUARANTEED FIX: The Array Overwrite (No Slicing!)
+            # We preserve the exact array length so React's math doesn't glitch,
+            # but we force the active segment to equal the safe haven!
+            updated_waypoints = list(ship.route_waypoints)
+            
+            updated_waypoints[safe_idx] = safe_coord
+            if safe_idx + 1 < len(updated_waypoints):
+                updated_waypoints[safe_idx + 1] = safe_coord
+                
+            for i in range(safe_idx + 2, len(updated_waypoints)):
+                updated_waypoints[i] = safe_coord
+                
+            ship.route_waypoints = updated_waypoints
+
     elif choice == 'PUSH':
-        success = random.random() < 0.20 # 20% Success Rate
+        success = random.random() < 0.20 
         if success:
-            # 🔥 REWARD FOR SUCCESS
             user.money += 15000
             user.reputation += 10
         else:
-            # 🔥 PENALTY FOR FAILURE
             user.money -= 5000
             user.reputation -= 10
             ship.shelter_count += 1
-            
             if ship.shelter_count >= 2:
                 ship.status = "Failed"
             else:
                 ship.status = "Sheltered"
                 
-                # Cut the waypoints array so they start from the previous dot!
-                current_idx = data.get("current_index", 0)
-                safe_idx = max(0, current_idx - 1)
+                # 🔥 Applied the exact same math fix here so a failed push doesn't teleport either!
+                fallback_idx = max(0, safe_idx - 1)
+                safe_coord = ship.route_waypoints[fallback_idx]
                 
-                original_segments = len(ship.route_waypoints) - 1
-                new_waypoints = ship.route_waypoints[safe_idx:]
-                new_segments = max(1, len(new_waypoints) - 1)
-                
-                if original_segments > 0:
-                    ship.total_duration_ms = ship.total_duration_ms * (new_segments / original_segments)
+                updated_waypoints = list(ship.route_waypoints)
+                updated_waypoints[safe_idx] = safe_coord
+                if safe_idx + 1 < len(updated_waypoints):
+                    updated_waypoints[safe_idx + 1] = safe_coord
+                for i in range(safe_idx + 2, len(updated_waypoints)):
+                    updated_waypoints[i] = safe_coord
                     
-                ship.route_waypoints = new_waypoints
+                ship.route_waypoints = updated_waypoints
             
-    # Clamp reputation bounds
     user.reputation = max(0, min(100, user.reputation))
     ship.storm_event_handled = True
     
@@ -461,6 +568,11 @@ def resolve_arrival(ship_id: int, data: dict, db: Session = Depends(get_db)):
         return {"message": "Already processed", "user_money": user.money}
         
     cost = DESTINATION_PRICING.get(ship.destination_country, 0)
+
+    # 🔥 DYNAMIC PAYOUT: Must match the weight multiplier they paid for!
+    base_cost = DESTINATION_PRICING.get(ship.destination_country, 0)
+    weight_multiplier = ship.weight_kg / 1000.0
+    actual_cost_paid = int(base_cost * weight_multiplier)
     
     # 🔥 THE BULK PAYOUT: 1.5x the route cost (e.g., 20k -> 30k)
     payout = int(cost * 1.5)
@@ -502,36 +614,61 @@ def activate_booster(username: str, data: dict, db: Session = Depends(get_db)):
     
     return {"money": user.money, "active_boosters": user.active_boosters}
 
-@app.get("/api/analytics/forecast")
-def get_traffic_forecast():
-    today_vessels = min(len(LIVE_VESSELS), 1000) if LIVE_VESSELS else 300
-    today_index = datetime.utcnow().weekday()
-    
-    # Predict future traffic
-    pred_day1 = int(congestion_rf_model.predict(np.array([[(today_index + 1) % 7, 0, today_vessels]]))[0])
-    pred_day2 = int(congestion_rf_model.predict(np.array([[(today_index + 2) % 7, 1, today_vessels + 10]]))[0])
-    pred_day3 = int(congestion_rf_model.predict(np.array([[(today_index + 3) % 7, 0, today_vessels - 5]]))[0])
+from datetime import datetime
 
-    # Calculate 72H Risk Trend based on AI predictions
-    avg_future = (pred_day1 + pred_day2 + pred_day3) / 3
-    if avg_future > today_vessels * 0.2:
+@app.get("/api/analytics/forecast")
+def get_congestion_forecast():
+    current_live_traffic = len(LIVE_VESSELS) if len(LIVE_VESSELS) > 0 else 91
+    day_of_week = datetime.today().weekday()
+    port_status = 1 if current_live_traffic > 200 else 0 
+
+    # 🔥 THE ROUTER: Select the correct AI Brain based on current traffic
+    active_brain = None
+    if current_live_traffic < 300:
+        active_brain = CONGESTION_BRAINS.get("low")
+        print(f"🤖 Routing to LOW DENSITY Brain (Traffic: {current_live_traffic})")
+    elif current_live_traffic < 1000:
+        active_brain = CONGESTION_BRAINS.get("medium")
+        print(f"🤖 Routing to MEDIUM DENSITY Brain (Traffic: {current_live_traffic})")
+    else:
+        active_brain = CONGESTION_BRAINS.get("high")
+        print(f"🤖 Routing to GLOBAL HUB Brain (Traffic: {current_live_traffic})")
+
+    # Safety Fallback
+    if active_brain is None:
+        return {"forecast": [], "risk_trend": "AI OFFLINE"}
+
+    # Execute prediction on the selected brain
+    live_input = np.array([[day_of_week, port_status, current_live_traffic]])
+    predicted_72h_traffic = int(active_brain.predict(live_input)[0])
+
+    # 🔥 THE FIX: Wire DBSCAN directly into the Risk Trend!
+    # We call your existing DBSCAN function to check the map for red zones.
+    active_red_zones = get_congestion_zones()
+
+    # If DBSCAN found a traffic jam, INSTANTLY elevate the risk to CRITICAL.
+    if len(active_red_zones) > 0:
         risk = "CRITICAL"
-    elif avg_future > today_vessels * 0.5:
+    elif predicted_72h_traffic > current_live_traffic * 1.5:
+        risk = "CRITICAL"
+    elif predicted_72h_traffic > current_live_traffic * 1.2:
         risk = "ELEVATED"
     else:
-        risk = "NORMAL"
+        risk = "NOMINAL"
+
+    step = (predicted_72h_traffic - current_live_traffic) / 3
 
     return {
-        "risk_trend": risk,
         "forecast": [
-            {"day": "Day -3", "historical": max(0, today_vessels - 45), "predicted": None},
-            {"day": "Day -2", "historical": max(0, today_vessels - 20), "predicted": None},
-            {"day": "Day -1", "historical": max(0, today_vessels + 15), "predicted": None},
-            {"day": "Today", "historical": today_vessels, "predicted": today_vessels},
-            {"day": "Day +1", "historical": None, "predicted": pred_day1},
-            {"day": "Day +2", "historical": None, "predicted": pred_day2},
-            {"day": "Day +3", "historical": None, "predicted": pred_day3},
-        ]
+            {"day": "Day -3", "historical": max(0, current_live_traffic - 45), "predicted": None},
+            {"day": "Day -2", "historical": max(0, current_live_traffic - 20), "predicted": None},
+            {"day": "Day -1", "historical": max(0, current_live_traffic + 15), "predicted": None},
+            {"day": "Today", "historical": current_live_traffic, "predicted": current_live_traffic},
+            {"day": "Day +1", "historical": None, "predicted": int(current_live_traffic + step)},
+            {"day": "Day +2", "historical": None, "predicted": int(current_live_traffic + (step * 2))},
+            {"day": "Day +3", "historical": None, "predicted": predicted_72h_traffic}
+        ],
+        "risk_trend": risk
     }
 
 @app.get("/api/analytics/congestion_zones")
