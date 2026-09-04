@@ -51,14 +51,28 @@
 /* ==========================================================================
    NEW MODERN SIDEBAR (CODINGLAB STYLE)
    ========================================================================== */
+/* ==========================================================================
+   UPDATED: SIDEBAR OVERLAY FIX (ANTI-LAG)
+   ========================================================================== */
 .sidebar {
-  position: relative;
+  position: absolute; /* 🔥 FIX: Detach from flow, float over map */
+  top: 0; left: 0; bottom: 0;
+  height: 100vh;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-heavy);
   display: flex;
   flex-direction: column;
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 1000;
+  z-index: 2000; /* 🔥 FIX: Ensure it sits above Leaflet */
+}
+
+.map-view {
+  position: relative;
+  /* 🔥 FIX: Hard-lock the margin and width to the collapsed size */
+  margin-left: var(--sidebar-collapsed-width); 
+  width: calc(100vw - var(--sidebar-collapsed-width));
+  height: 100vh;
+  /* NO transition on width here! This kills the Leaflet lag. */
 }
 
 /* --- Reverted Simulation Button Outline Style --- */
@@ -204,7 +218,6 @@
 /* ==========================================================================
    MAP & PANELS (Untouched logic, just adapted to variables)
    ========================================================================== */
-.map-view { flex-grow: 1; position: relative; }
 .leaflet-container { height: 100%; width: 100%; background: var(--bg-main); }
 
 .custom-map-controls {
@@ -307,194 +320,25 @@
 .notif-ack-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); padding: 10px; width: 100%; border-radius: 8px; cursor: pointer; margin-top: 20px;}
 
 /* ==========================================================================
-   COMMANDER DOSSIER & PROFILE OVERLAYS
-   ========================================================================== */
-
-/* --- Sidebar Commander Card --- */
-.commander-card {
-  display: flex;
-  align-items: center;
-  padding: 12px;
-  margin: 0 10px 20px 10px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.commander-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-color);
-}
-
-.sidebar.collapsed .commander-card {
-  padding: 12px 0;
-  justify-content: center;
-}
-
-.cc-avatar {
-  min-width: 36px;
-  height: 36px;
-  background: var(--accent-color);
-  color: #fff;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  font-size: 16px;
-}
-
-.cc-info {
-  margin-left: 12px;
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  transition: opacity 0.3s;
-}
-
-.sidebar.collapsed .cc-info { display: none; }
-
-.cc-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.cc-status {
-  font-size: 10px;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 2px;
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  background-color: #10b981;
-  border-radius: 50%;
-  box-shadow: 0 0 6px #10b981;
-}
-
-.cc-gear {
-  color: var(--text-muted);
-  font-size: 14px;
-  transition: transform 0.3s ease;
-}
-
-.sidebar.collapsed .cc-gear { display: none; }
-.commander-card:hover .cc-gear { transform: rotate(90deg); color: var(--text-primary); }
-
-/* ==========================================================================
-   PROFILE DOSSIER OVERRIDES (Extends AuthStyle.css)
-   ========================================================================== */
-
-.profile-modal-card {
-  padding-top: 24px; /* Slightly tighter top padding for the profile */
-}
-
-.dossier-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-heavy);
-}
-
-.commander-avatar-large {
-  width: 56px;
-  height: 56px;
-  background: linear-gradient(135deg, var(--accent-color), #4f46e5);
-  color: #fff;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  font-weight: bold;
-  font-family: var(--font-mono);
-  box-shadow: 0 4px 16px rgba(130, 160, 255, 0.2);
-}
-
-.dossier-titles {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.dossier-titles .screen-title {
-  margin-bottom: 6px;
-}
-
-.clearance-badge {
-  background: rgba(16, 185, 129, 0.15) !important;
-  color: #10b981 !important;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  padding: 4px 8px;
-}
-
-/* Specific Danger Tab tweaks */
-.tab-btn.danger-tab.active {
-  background: rgba(255, 79, 106, 0.1);
-  color: #ff4f6a;
-}
-
-.danger-warning {
-  margin-bottom: 24px;
-}
-
-.danger-warning h4 {
-  color: #ff4f6a;
-  margin: 0 0 8px 0;
-  font-size: 16px;
-  font-family: var(--font-sans);
-}
-
-.danger-warning p {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.btn-danger {
-  background: rgba(255, 79, 106, 0.1) !important;
-  color: #ff4f6a !important;
-  border: 1px solid rgba(255, 79, 106, 0.5) !important;
-}
-
-.btn-danger:hover {
-  background: rgba(255, 79, 106, 0.2) !important;
-}
-
-.readonly-input {
-  background: rgba(0, 0, 0, 0.3) !important;
-  color: var(--text-muted) !important;
-  cursor: not-allowed;
-  border-style: dashed !important;
-}
-
-/* ==========================================================================
    COMMAND CENTER MAP OVERLAYS & MODALS
    ========================================================================== */
 
-/* 🔥 The Tactical Radar Grid */
+/* 🌊 The Tactical Radar Grid */
 .radar-grid-overlay {
   position: absolute; 
   top: 0; 
   left: 0; 
-  width: 100vw; 
-  height: 100vh; 
+  width: 100%; /* 🔥 FIX: Changed to 100% so it doesn't overflow the sidebar */
+  height: 100%; /* 🔥 FIX: Changed to 100% */
   pointer-events: none; 
-  z-index: 400; 
-  background-image: linear-gradient(rgba(130, 160, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(130, 160, 255, 0.04) 1px, transparent 1px);
-  background-size: 50px 50px;
+  z-index: 500; /* 🔥 FIX: Bumped to 500 so it renders on top of the Leaflet Map tiles! */
+  background-image: linear-gradient(rgba(130, 160, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(130, 160, 255, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px; /* 🔥 Exactly the same size as Simulation */
 }
+
+/* Light Mode Overrides */
 .dashboard-wrapper.light-mode .radar-grid-overlay {
+  /* 🔥 Increased the darkness slightly so it pops beautifully against the white map! */
   background-image: linear-gradient(rgba(99, 102, 241, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(99, 102, 241, 0.15) 1px, transparent 1px);
 }
 
@@ -561,4 +405,346 @@
   border-color: #ef4444;
   box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
   text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+/* ==========================================================================
+   REAL-WORLD LIVE WEATHER WIDGET
+   ========================================================================== */
+.live-weather-container {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  z-index: 1000; /* Stays on top of the map */
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* The Toggle Button */
+.weather-toggle-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.weather-toggle-btn:hover {
+  transform: scale(1.05);
+  border-color: var(--accent-color);
+  box-shadow: 0 8px 30px rgba(130, 160, 255, 0.2);
+}
+
+/* The Expanding Panel */
+.weather-dropdown-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 20px;
+  width: 260px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  
+  /* Animation Physics */
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+  pointer-events: none;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: bottom left;
+}
+
+.weather-dropdown-panel.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Inside the Panel */
+.weather-main-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-heavy);
+  padding-bottom: 16px;
+}
+
+.temp-display h2 {
+  margin: 0;
+  font-size: 36px;
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.weather-desc {
+  display: flex;
+  flex-direction: column;
+}
+
+.weather-desc .condition {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-color);
+}
+
+.weather-desc .location {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.weather-details-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.w-detail {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  background: var(--bg-card);
+  padding: 10px;
+  border-radius: 8px;
+}
+
+/* Light Mode Overrides */
+.dashboard-wrapper.light-mode .weather-toggle-btn,
+.dashboard-wrapper.light-mode .weather-dropdown-panel {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(99, 102, 241, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* ==========================================================================
+   OS-STYLE WEATHER WIDGET
+   ========================================================================== */
+.os-weather-widget {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 1000;
+  /* background: transparent; */
+  /* border: 1px solid var(--border-color); */
+  border-radius: 16px;
+  /* box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); */
+  /* backdrop-filter: blur(16px); */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* Smooth drawer animation */
+  max-width: 240px;
+  max-height: 80px; 
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1), all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+/* When the sidebar opens, dynamically push the widget to the right */
+.map-view.sidebar-expanded .os-weather-widget {
+  left: 204px; /* Clears the expanded sidebar perfectly */
+}
+
+.os-weather-widget.open {
+  max-width: 600px; /* Widens to fit the forecast */
+  max-height: 300px; /* Drops open */
+  background: rgba(17, 20, 27, 0.95);
+  border-color: var(--accent-color);
+}
+
+/* --- THE COMPACT HEADER PILL --- */
+.widget-compact-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  cursor: pointer;
+  height: 80px;
+  box-sizing: border-box;
+}
+
+.widget-main-temp h2 {
+  margin: 0;
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -2px;
+  line-height: 1;
+}
+
+.widget-meta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-left: 1px solid var(--border-heavy);
+  padding-left: 16px;
+}
+
+.widget-meta .condition {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-color);
+  white-space: nowrap;
+}
+
+.widget-meta .location {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+
+/* --- THE EXPANDED FORECAST BODY --- */
+.widget-expanded-body {
+  opacity: 0;
+  padding: 0 20px 20px 20px;
+  transition: opacity 0.3s ease-in-out;
+  pointer-events: none;
+}
+
+.os-weather-widget.open .widget-expanded-body {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.forecast-scroll-container {
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  padding: 15px 5px 5px 5px;
+  border-top: 1px solid var(--border-heavy);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-heavy) transparent;
+}
+
+.forecast-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+.forecast-scroll-container::-webkit-scrollbar-thumb {
+  background-color: var(--border-heavy);
+  border-radius: 4px;
+}
+
+.forecast-day-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 60px;
+}
+
+.f-wind-speed {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: bold;
+}
+
+.f-day-name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.f-icon-wrapper svg {
+  width: 32px;
+  height: 32px;
+}
+
+.f-temps {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.f-temps .high {
+  color: var(--text-primary);
+}
+
+.f-temps .low {
+  color: var(--text-muted);
+}
+
+/* Light Mode Overrides */
+.dashboard-wrapper.light-mode .os-weather-widget {
+  /* background: rgba(255, 255, 255, 0.85); */
+  border-color: rgba(99, 102, 241, 0.2);
+}
+.dashboard-wrapper.light-mode .os-weather-widget.open {
+  background: rgba(255, 255, 255, 0.98);
+}
+
+/* ==========================================================================
+   UPDATED UI COMPONENTS (THREAT MATRIX & MAP TOGGLE)
+   ========================================================================== */
+
+/* Fix the Map Theme Toggle Button to center the SVG perfectly */
+.theme-map-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 10px; /* Slight separation from zoom controls */
+}
+.theme-map-btn svg {
+  margin: 0 !important; /* Overrides any inherited nav-icon margins */
+}
+
+/* Explainable AI Threat Matrix Legend - COMPACT MODE */
+.threat-matrix-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* Reduced gap */
+  margin-top: 12px; /* Reduced top margin */
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.tm-item {
+  display: flex;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tm-color-bar {
+  width: 4px; /* Slimmer color bar */
+  align-self: stretch;
+}
+
+.tm-info {
+  padding: 6px 10px; /* Tighter padding inside the cards */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tm-info strong {
+  font-size: 10px; /* Slightly smaller */
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.tm-info p {
+  margin: 0;
+  font-size: 10px; /* Slightly smaller text so it doesn't wrap unnecessarily */
+  color: var(--text-secondary);
 }

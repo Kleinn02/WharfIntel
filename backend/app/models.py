@@ -43,6 +43,8 @@ class Shipment(Base):
     status = Column(String, default="Preparing")
     departure_time = Column(DateTime, default=datetime.utcnow)
     route_waypoints = Column(JSON, default=[])
+    # 🔥 ADD THIS: Permanent authoritative cargo health tracking
+    cargo_health = Column(Float, default=100.0)
     
     # --- CHAOS ENGINE & TWO-STRIKE SYSTEM ---
     total_duration_ms = Column(Float, default=432000000.0)
@@ -51,3 +53,12 @@ class Shipment(Base):
     storm_event_handled = Column(Boolean, default=False)
 
     owner = relationship("User", back_populates="shipments")
+
+    # --- ADD THIS TO THE VERY BOTTOM OF models.py ---
+class SystemLog(Base):
+    __tablename__ = "system_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    event_type = Column(String, index=True)  # e.g., "AUTH", "SYSTEM", "CLIMATE"
+    description = Column(String)

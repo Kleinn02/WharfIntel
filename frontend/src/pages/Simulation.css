@@ -46,7 +46,17 @@
 .sim-wrapper.light-mode .radar-grid-overlay {
   background-image: linear-gradient(rgba(99, 102, 241, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(99, 102, 241, 0.15) 1px, transparent 1px);
 }
-.sim-map-controls { position: absolute; top: 90px; left: 25px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+.sim-map-controls { 
+  position: absolute; 
+  top: 90px;          /* Tucked cleanly below the Exit/Black Market buttons */
+  left: 25px;         /* Anchored to the left margin */
+  right: auto; 
+  bottom: auto;
+  z-index: 1000; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 8px; 
+}
 .control-btn { width: 40px; height: 40px; background: var(--bg-panel); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 8px; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); transition: all 0.2s ease; backdrop-filter: blur(8px); }
 .control-btn:hover { background: var(--bg-card); transform: scale(1.05); }
 .theme-toggle-btn { margin-top: 10px; font-size: 16px; }
@@ -410,8 +420,8 @@
 /* The Trigger Button (Top Left) */
 .sim-booster-btn {
   position: absolute;
-  top: 28px;
-  left: 300px; /* Positions it right next to the exit button */
+  top: 25px;
+  left: 85px; /* Positions it right next to the exit button */
   background: rgba(241, 196, 15, 0.1);
   border: 1px solid rgba(241, 196, 15, 0.4);
   color: #f1c40f;
@@ -565,3 +575,268 @@
 .sim-wrapper.light-mode .booster-card { background: #f8f9fa; border-color: #e5e7eb; }
 .sim-wrapper.light-mode .booster-card:hover { border-color: #f1c40f; background: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
 .sim-wrapper.light-mode .booster-info h4 { color: #111827; }
+
+/* ==========================================================================
+   16. MACRO-CLIMATE WEATHER HUD (PILL & MODAL)
+   ========================================================================== */
+
+/* --- The Clickable Pill (Bottom Left) --- */
+.weather-hud-pill {
+  position: absolute;
+  bottom: 175px; 
+  left: 25px;
+  background: rgba(5, 7, 10, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  z-index: 2000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  transition: all 0.2s ease-in-out;
+}
+
+.weather-hud-pill:hover {
+  background: rgba(130, 160, 255, 0.1);
+  border-color: var(--accent-blue);
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+}
+
+.weather-timer-box {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: var(--accent-blue);
+  font-weight: bold;
+  margin-left: auto; /* Pushes it to the far right of the pill */
+}
+
+/* --- The Centered Modal --- */
+.weather-modal {
+  background: #0a0c10; 
+  border: 1px solid rgba(130, 160, 255, 0.2);
+  border-radius: 16px; 
+  width: 100%; 
+  max-width: 480px;
+  padding: 35px 30px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6); 
+  position: relative;
+  font-family: var(--font-sans);
+  animation: modalSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.weather-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 15px;
+}
+
+.weather-modal-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.risk-badge {
+  padding: 6px 12px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: bold;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Keep your existing metrics, forecast grid, and legend styles */
+.weather-metrics {
+  display: flex;
+  justify-content: space-between;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric .label {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.metric .value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.weather-forecast {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.forecast-title {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+}
+
+.forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.forecast-item {
+  background: rgba(255, 255, 255, 0.03);
+  border-top: 3px solid;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.forecast-item .time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.forecast-item .risk {
+  font-size: 14px;
+  font-weight: bold;
+  font-family: var(--font-mono);
+}
+
+/* WEATHER HUD LEGEND */
+.weather-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.legend-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+.legend-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-item span {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+.legend-item p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+}
+
+/* Light Mode Overrides */
+.sim-wrapper.light-mode .weather-hud-pill {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+.sim-wrapper.light-mode .weather-modal {
+  background: #ffffff;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+.sim-wrapper.light-mode .forecast-item { background: rgba(0, 0, 0, 0.03); }
+
+/* ==========================================================================
+   17. MACRO-CLIMATE MAP OVERLAYS
+   ========================================================================== */
+
+/* The base overlay layer (invisible during NOMINAL weather) */
+.climate-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none; /* Crucial: Lets you click the map beneath it */
+  z-index: 450; /* Sits above the radar grid, but below the UI */
+  transition: all 3s ease-in-out; /* Super smooth 3-second weather transitions */
+  background-size: 200% 200%;
+  opacity: 0;
+}
+
+/* ⚠️ DETERIORATING WEATHER: Subtle dark/yellowish gradient moving slowly */
+.sim-wrapper.weather-deteriorating .climate-overlay {
+  opacity: 0.35;
+  background: radial-gradient(circle at 50% 50%, transparent 10%, rgba(241, 196, 15, 0.05) 50%, rgba(10, 12, 16, 0.5) 100%);
+  animation: stormDrift 20s infinite alternate ease-in-out;
+}
+
+/* 🚨 CYCLONE IMMINENT: Heavy, dark, reddish-storm overlay with fast movement */
+.sim-wrapper.weather-cyclone-imminent .climate-overlay {
+  opacity: 0.7;
+  background: radial-gradient(circle at 50% 50%, rgba(231, 76, 60, 0.05) 0%, rgba(10, 12, 16, 0.6) 50%, rgba(5, 7, 10, 0.95) 100%);
+  animation: cycloneDrift 10s infinite alternate ease-in-out;
+}
+
+/* Base map transition so the physical tiles darken smoothly */
+.sim-wrapper .leaflet-container {
+  transition: filter 3s ease-in-out;
+}
+
+/* Dim the physical map tiles slightly during bad weather */
+.sim-wrapper.weather-deteriorating .leaflet-container {
+  filter: brightness(0.85) sepia(0.1);
+}
+
+/* Severely dim and wash out the map tiles during a cyclone */
+.sim-wrapper.weather-cyclone-imminent .leaflet-container {
+  filter: brightness(0.65) contrast(1.15) grayscale(0.3);
+}
+
+/* Animations for the cloud drift effect */
+@keyframes stormDrift {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+
+@keyframes cycloneDrift {
+  0% { background-position: 0% 50%; transform: scale(1); }
+  50% { background-position: 100% 50%; transform: scale(1.05); }
+  100% { background-position: 50% 100%; transform: scale(1); }
+}
+
+/* Light Mode Overrides for Climate */
+.sim-wrapper.light-mode.weather-deteriorating .climate-overlay {
+  background: radial-gradient(circle at 50% 50%, transparent 10%, rgba(241, 196, 15, 0.1) 50%, rgba(100, 116, 139, 0.3) 100%);
+}
+.sim-wrapper.light-mode.weather-cyclone-imminent .climate-overlay {
+  background: radial-gradient(circle at 50% 50%, rgba(231, 76, 60, 0.1) 0%, rgba(71, 85, 105, 0.5) 50%, rgba(15, 23, 42, 0.8) 100%);
+}

@@ -18,6 +18,43 @@
   --font-sans: 'Inter', sans-serif;
 }
 
+/* 🔥 THE FIX: Universal Box Sizing to guarantee Chrome respects padding bounds */
+.admin-theme *,
+.admin-theme *::before,
+.admin-theme *::after {
+  box-sizing: border-box;
+}
+
+/* 🔥 THE FIX: Universal Box Sizing to guarantee Chrome respects padding bounds */
+.admin-theme *,
+.admin-theme *::before,
+.admin-theme *::after {
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   🔥 THE MASTER ALIGNMENT FIX (ANTI-GAP)
+   Overrides the Dashboard.css margin that was pushing everything too far right
+   ========================================================================== */
+.admin-theme .map-view {
+  margin-left: 0 !important; /* Kills the massive gap */
+  width: auto !important;
+  flex: 1;
+  height: 100vh !important;
+  max-height: 100vh !important; /* Double lock for Chrome */
+  overflow: hidden !important;
+  background: transparent;
+}
+
+/* Ensures the weather pill respects local wrapper positioning */
+.admin-theme .weather-hud-pill {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
 /* 1. Cyber-Grid Dynamic Matrix Background */
 .admin-theme.dashboard-wrapper.dark-mode {
   background-color: var(--cyber-bg) !important;
@@ -394,4 +431,37 @@
 }
 .admin-theme .leaflet-popup-close-button:hover {
   color: var(--cyber-danger) !important;
+}
+
+/* ==========================================================================
+   ADMIN SPECIFIC OVERRIDES (CHROME FIXES & WEATHER HUD)
+   ========================================================================== */
+
+/* 🔥 Strips the absolute positioning so the Pill stacks cleanly under the header */
+.admin-theme .weather-hud-pill {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+/* 🔥 Forces Chrome to obey the height limits and scroll the table instead of the page */
+.admin-theme .bento-main-table-card {
+  display: flex;
+  flex-direction: column;
+}
+.admin-theme .bento-main-table-card table {
+  flex: 1;
+}
+.admin-theme .bento-main-table-card tbody {
+  display: block;
+  overflow-y: auto;
+  max-height: calc(100vh - 400px); /* Strictly prevents Chrome overflow */
+}
+.admin-theme .admin-custom-table thead, 
+.admin-theme .admin-custom-table tbody tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
 }

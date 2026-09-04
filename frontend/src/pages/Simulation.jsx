@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './Simulation.css';
+import AssessmentModal from './AssessmentModal';
+import WeatherHUD from './WeatherHUD'; // 🔥 Add this line
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import TopHUD from './TopHUD';
 
@@ -172,7 +174,10 @@ const Simulation = () => {
   const [showFloatingIncome, setShowFloatingIncome] = useState(false);
   const [chaosEvent, setChaosEvent] = useState(null); 
   const [chaosTimer, setChaosTimer] = useState(15); 
+  const [globalWeather, setGlobalWeather] = useState('NOMINAL');
+  const [weatherSyncTrigger, setWeatherSyncTrigger] = useState(0); // 🔥 NEW: Triggers HUD update
   const [relaunchEvent, setRelaunchEvent] = useState(null); // 🔥 THE FIX: Added Relaunch State!
+  const [assessmentConfig, setAssessmentConfig] = useState(null);
   const [ticketForm, setTicketForm] = useState({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global' });
   const [selectedTrackingId, setSelectedTrackingId] = useState(null);
   const [flyTarget, setFlyTarget] = useState(null);
@@ -236,6 +241,12 @@ const Simulation = () => {
         if (data.commander !== userId) {
           addTerminalLog(`> NETWORK: Commander [${data.commander}] ${data.action}.`, 'warning');
         }
+      }
+      
+      // 🔥 NEW: LISTEN FOR ADMIN WEATHER OVERRIDES
+      if (data.event === 'SYNC_WEATHER') {
+        setWeatherSyncTrigger(prev => prev + 1); // This tells WeatherHUD to re-fetch instantly!
+        addTerminalLog(`> GLOBAL DIRECTIVE: ${data.action}`, 'highlight');
       }
     };
     
@@ -367,8 +378,18 @@ const Simulation = () => {
       currentPhase = { type: 'truck', label: 'Origin Hub (Truck)', step: 1 };
     }
 
-    // 🔥 ELITE KNOWLEDGE: Dynamic Health Bar Logic (With Fail-Safes)
-    let currentHealth = 100;
+    // 🔥 ELITE KNOWLEDGE: Trust the authoritative health from the database!
+    let currentHealth = ship.cargoHealth !== undefined ? ship.cargoHealth : 100;
+    
+    // Ensure health stays securely between 0 and 100 for the UI
+    currentHealth = Math.max(0, Math.min(100, currentHealth)).toFixed(1);
+
+    return { 
+      pos: currentPos, 
+      angle: getBearing(currentPos[0], currentPos[1], waypoints[nextIdx][0], waypoints[nextIdx][1]),
+      phase: currentPhase,
+      health: currentHealth // Injects the true DB health value into the UI
+    };
     
     // Fail-safe: Check the explicit category OR infer from the cargo name
     const isPerishable = 
@@ -416,10 +437,9 @@ const Simulation = () => {
             rawId: s.id, 
             cargo: s.cargo_name, 
             cargoType: s.scale, 
-            category: s.category, // 🔥 FIX: Grab the category from the FastAPI payload!
-            commander: s.commander, // 🔥 Map the owner's name!
+            category: s.category, 
+            commander: s.commander, 
             destination: s.destination_country,
-            // 🔥 FIX: Parse the Postgres JSON string back into a real Array!
             waypoints: typeof s.route_waypoints === 'string' ? JSON.parse(s.route_waypoints) : s.route_waypoints,
             startTime: new Date(s.departure_time).getTime(),
             duration: s.total_duration_ms,
@@ -427,8 +447,8 @@ const Simulation = () => {
             eventHandled: s.storm_event_handled,
             shelterCount: s.shelter_count,
             stormTime: s.storm_time ? new Date(s.storm_time).getTime() : null,
+            cargoHealth: s.cargo_health, // 🔥 THE FIX: Store the true DB health locally
             lastSegment: 0,
-            // 🔥 AMNESIA FIX: Load the saved offset and speed for THIS specific ship
             timeOffset: Number(localStorage.getItem(`offset_${shipId}`)) || 0, 
             currentSpeed: Number(localStorage.getItem(`speed_${shipId}`)) || 1
           };
@@ -517,13 +537,14 @@ const Simulation = () => {
 
   useEffect(() => {
     let interval;
-    if (chaosEvent && chaosTimer > 0) {
+    // 🔥 THE FIX: Stop the 15-second countdown if the Assessment Modal is active
+    if (chaosEvent && chaosTimer > 0 && !assessmentConfig) {
       interval = setInterval(() => { setChaosTimer(prev => prev - 1); }, 1000);
-    } else if (chaosEvent && chaosTimer === 0) {
+    } else if (chaosEvent && chaosTimer === 0 && !assessmentConfig) {
       handleChaosChoice('PUSH'); 
     }
     return () => clearInterval(interval);
-  }, [chaosEvent, chaosTimer]);
+  }, [chaosEvent, chaosTimer, assessmentConfig]);
 
   useEffect(() => {
     activeExports.forEach(ship => {
@@ -613,99 +634,99 @@ const Simulation = () => {
     }
   };
 
-  const handleChaosChoice = async (choice) => {
+  const handleChaosChoice = (choice) => {
     if (!chaosEvent) return;
 
-    const activeEvent = chaosEvent; 
-    setChaosEvent(null); 
+    // 🔥 Feature C & E: Launch Assessment instead of immediate result
+    // Extract current health from tracked data, fallback to 100
+    const nav = calculateNavigation(chaosEvent);
+    const startingHealth = parseFloat(nav.health) || 100;
+    
+    setAssessmentConfig({
+      event: chaosEvent,
+      type: choice, // 'PUSH' or 'RETREAT'
+      health: startingHealth
+    });
+  };
+
+  const executeRelaunch = async (choice) => {
+    if (!relaunchEvent) return;
+    
+    if (choice === 'REROUTE') {
+      const nav = calculateNavigation(relaunchEvent);
+      const startingHealth = parseFloat(nav.health) || 100;
+      setAssessmentConfig({
+        event: relaunchEvent,
+        type: choice,
+        health: startingHealth
+      });
+      return; // Stop here, modal will handle the rest
+    }
+    
+    // WAIT IT OUT has no questions, just a direct API call (keep existing code for WAIT here, but add explicit health penalty param)
+    processAssessmentResult(relaunchEvent, choice, { success: true, finalHealth: Math.max(0, (parseFloat(calculateNavigation(relaunchEvent).health) || 100) - 15) });
+  };
+
+  // 🔥 NEW: Fires when the user finishes the questionnaire
+  const processAssessmentResult = async (activeEvent, choice, result) => {
+    setAssessmentConfig(null);
+    if (choice === 'PUSH' || choice === 'RETREAT') setChaosEvent(null);
+    if (choice === 'REROUTE' || choice === 'WAIT') setRelaunchEvent(null);
 
     const shipPersonalTime = Date.now() + (activeEvent.timeOffset || 0);
     const progress = Math.min((shipPersonalTime - activeEvent.startTime) / activeEvent.duration, 1);
     const currentIdx = Math.floor(progress * ((activeEvent.waypoints?.length || 2) - 1));
 
+    // Calculate how much health was lost during the quiz
+    const nav = calculateNavigation(activeEvent);
+    const startingHealth = parseFloat(nav.health) || 100;
+    // 🔥 THE FIX: Round the penalty so the notification shows a clean integer!
+    const healthPenalty = Math.round(startingHealth - result.finalHealth);
+
     try {
-      const res = await fetch(`${API_BASE}/ticketing/${activeEvent.rawId}/resolve_event`, {
+      const endpoint = (choice === 'REROUTE' || choice === 'WAIT') ? 'relaunch' : 'resolve_event';
+      const res = await fetch(`${API_BASE}/ticketing/${activeEvent.rawId}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: userId, choice: choice, current_index: currentIdx }) 
+        body: JSON.stringify({ 
+          username: userId, 
+          choice: choice, 
+          current_index: currentIdx,
+          is_success: result.success,       // Did they pass the threshold?
+          health_penalty: healthPenalty     // Send exact % damage to DB
+        }) 
       });
       
       if (res.ok) {
         const data = await res.json();
         
-        // 🔥 THE MATH FIX: We lock the current progress offset BEFORE fetching state
-        // This prevents the ship from jittering when the array updates.
-        const requiredElapsed = progress * activeEvent.duration;
+        // Sync time offset to prevent map jitter
+        const penaltyMs = choice === 'WAIT' ? 172800000 : (choice === 'REROUTE' ? 86400000 : 0);
+        const newDuration = activeEvent.duration + penaltyMs;
+        const requiredElapsed = progress * newDuration;
         const newTimeOffset = requiredElapsed - Date.now() + activeEvent.startTime;
         localStorage.setItem(`offset_${activeEvent.id}`, newTimeOffset.toString());
 
         await fetchGameState(); 
         
-        // 🔥 Prevent the ship from driving away if it's supposed to be anchored!
         if (data.status !== 'Sheltered' && data.status !== 'Failed') {
           changeShipSpeed(activeEvent.id, 1); 
         }
         
-        // 🔥 FIX: Highly specific, styled modal outcomes based on the user's choice!
+        // Custom Notifications based on result
         if (data.status === 'Failed') {
           setNotification({ title: "CONTRACT TERMINATED", message: "Vessel lost at sea. Cargo unrecoverable.", type: "error" });
-        } else if (data.status === 'Sheltered') {
-          setNotification({ title: "ANCHOR DROPPED", message: "Vessel safely holding position. Docking fees applied.", type: "warning" });
-        } else if (choice === 'REROUTE') {
-          setNotification({ title: "REROUTE INITIATED", message: "New trajectory calculated. Fuel logistics fee applied.", type: "reroute" });
+        } else if (choice === 'RETREAT') {
+          setNotification({ title: "TACTICAL RETREAT", message: `Fell back to safe node. Cargo Damage: -${healthPenalty}%.`, type: "warning" });
+        } else if (choice === 'REROUTE' && result.success) {
+          setNotification({ title: "REROUTE INITIATED", message: `New trajectory calculated. Damage taken: -${healthPenalty}%.`, type: "reroute" });
+        } else if (choice === 'WAIT') {
+          setNotification({ title: "ANCHOR DROPPED", message: "Vessel holding position. -15% Health due to delay.", type: "warning" });
         } else {
-          setNotification({ title: "STORM BREACHED", message: "Vessel successfully pushed through the anomaly! Bonus secured.", type: "success" });
+          setNotification({ title: "STORM BREACHED", message: `Pushed through anomaly. Cargo Damage: -${healthPenalty}%.`, type: "success" });
         }
       }
     } catch (e) { console.error(e); }
-  };
-
-  const executeRelaunch = async (choice) => {
-    if (!relaunchEvent) return;
-    const exp = relaunchEvent;
-    setRelaunchEvent(null);
-    
-    const shipPersonalTime = Date.now() + (exp.timeOffset || 0);
-    const progress = Math.min((shipPersonalTime - exp.startTime) / exp.duration, 1);
-    const currentIdx = Math.floor(progress * ((exp.waypoints?.length || 2) - 1));
-    
-    try {
-      const res = await fetch(`${API_BASE}/ticketing/${exp.rawId}/relaunch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: userId, choice: choice, current_index: currentIdx })
-      });
-      
-      if (res.ok) {
-         // 🔥 THE TIMELINE WARP FIX (Mathematical Sync) 🔥
-         // Because WAIT adds 2 days and REROUTE adds 1 day to the total backend duration, 
-         // we MUST artificially scale up the local elapsed time offset before fetching state.
-         // This guarantees the progress percentage remains perfectly identical!
-         const penaltyMs = choice === 'WAIT' ? 172800000 : (choice === 'REROUTE' ? 86400000 : 0);
-         
-         if (penaltyMs > 0) {
-           const newDuration = exp.duration + penaltyMs;
-           const requiredElapsed = progress * newDuration;
-           const newTimeOffset = requiredElapsed - Date.now() + exp.startTime;
-           localStorage.setItem(`offset_${exp.id}`, newTimeOffset.toString());
-         } else {
-           const requiredElapsed = progress * exp.duration;
-           const newTimeOffset = requiredElapsed - Date.now() + exp.startTime;
-           localStorage.setItem(`offset_${exp.id}`, newTimeOffset.toString());
-         }
-
-         await fetchGameState();
-         changeShipSpeed(exp.id, 1); 
-         
-         if(choice === 'REROUTE') {
-           setNotification({ title: 'REROUTE ENGAGED', message: 'New trajectory locked. 70% Cost Penalty Applied.', type: 'reroute' });
-         } else {
-           setNotification({ title: 'STORM CLEARED', message: 'Vessel resuming original course. +2 Days Delay.', type: 'success' });
-         }
-      } else {
-         setNotification({ title: 'Insufficient Funds', message: 'You cannot afford the reroute fee.', type: 'error' });
-      }
-    } catch (e) { console.error("Relaunch failed", e); }
   };
 
   // 🔥 DYNAMIC UI PRICING: Calculate cost based on weight multiplier
@@ -733,6 +754,8 @@ const Simulation = () => {
       {/* 🔥 The subtle radar hex-grid over the map */}
       <div className="radar-grid-overlay"></div>
 
+      <div className="climate-overlay"></div>
+
       {/* 🔥 Hide Exit Button when AUTO is ON to prevent breaking the simulation */}
       {!isAutoFollow && (
         <button className="sim-exit-btn" onClick={() => setShowExitModal(true)}>
@@ -753,6 +776,12 @@ const Simulation = () => {
           </button>
         </>
       )}
+
+      {/* 🔥 MACRO-CLIMATE WEATHER HUD */}
+      {!isAutoFollow && <WeatherHUD onWeatherUpdate={setGlobalWeather} syncTrigger={weatherSyncTrigger} />}
+
+      {/* 🔥 THE TACTICAL TERMINAL */}
+      <div className="tactical-terminal" ref={terminalRef}></div>
 
       {/* 🔥 THE TACTICAL TERMINAL */}
       <div className="tactical-terminal" ref={terminalRef}>
@@ -836,6 +865,16 @@ const Simulation = () => {
         </div>
       )}
 
+      {/* 🧠 THE LEARNING SIMULATION MODAL */}
+      {assessmentConfig && (
+        <AssessmentModal 
+          mode={assessmentConfig.type} 
+          cargo={assessmentConfig.event.cargo}
+          initialHealth={assessmentConfig.health}
+          onComplete={(result) => processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result)}
+        />
+      )}
+  
       {/* ⚠️ PHASE 1: INITIAL STORM DETECTED MODAL */}
       {chaosEvent && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
@@ -989,7 +1028,7 @@ const Simulation = () => {
                 <div className="scrollable-timeline-container">
                   <div className="shopee-timeline">
 
-                    {/* Step 8: Parcel Delivered */}
+                    {/* Step 8: Cargo Discharged */}
                     <div className={`timeline-step truck-step ${progress >= 0.95 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.95), 'date')}</span>
@@ -997,12 +1036,12 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Parcel Delivered</strong>
-                        <p>Parcel has been successfully delivered to the recipient.</p>
+                        <strong>Cargo Discharged</strong>
+                        <p>Consignment successfully handed over to the final consignee.</p>
                       </div>
                     </div>
 
-                    {/* Step 7: Arrived at final sorting */}
+                    {/* Step 7: Port of Discharge (POD) */}
                     <div className={`timeline-step truck-step ${progress >= 0.85 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.85), 'date')}</span>
@@ -1010,8 +1049,8 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Arrived at Destination</strong>
-                        <p>Arrived at final sorting facility in {trackedShip.destination}.</p>
+                        <strong>Port of Discharge </strong>
+                        <p>Vessel berthed and freight unloaded at destination terminal in {trackedShip.destination}.</p>
                       </div>
                     </div>
 
@@ -1024,13 +1063,13 @@ const Simulation = () => {
                         </div>
                         <div className="step-indicator"><div className="step-dot" style={{backgroundColor: '#e74c3c', boxShadow: '0 0 8px #e74c3c'}}></div><div className="step-line"></div></div>
                         <div className="step-content">
-                          <strong style={{color: '#e74c3c'}}>Delivery Exception</strong>
-                          <p>Severe weather condition detected. Vessel holding position.</p>
+                          <strong style={{color: '#e74c3c'}}>Navigational Exception</strong>
+                          <p>Severe meteorological anomaly detected. Vessel executing holding pattern.</p>
                         </div>
                       </div>
                     )}
 
-                    {/* Step 6: Ocean Transit (🔥 Starts at 21%) */}
+                    {/* Step 6: Deep Sea Transit */}
                     <div className={`timeline-step ship-step ${progress > 0.20 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.21), 'date')}</span>
@@ -1038,12 +1077,12 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Ocean Transit</strong>
-                        <p>Vessel is in transit across international waters.</p>
+                        <strong>Deep Sea Transit</strong>
+                        <p>Vessel navigating active maritime shipping lanes.</p>
                       </div>
                     </div>
 
-                    {/* Step 5: Vessel cleared customs (🔥 Ends at 20%) */}
+                    {/* Step 5: Outbound Clearance */}
                     <div className={`timeline-step ship-step ${progress >= 0.20 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.20), 'date')}</span>
@@ -1051,12 +1090,12 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Cleared Customs</strong>
-                        <p>Blue Vessel cleared customs and departed Davao Port.</p>
+                        <strong>Outbound Clearance</strong>
+                        <p>Manifest approved by port authority. Vessel departed Port of Loading (POL).</p>
                       </div>
                     </div>
 
-                    {/* Step 4: Customs Processing */}
+                    {/* Step 4: Export Customs */}
                     <div className={`timeline-step truck-step ${progress >= 0.15 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.15), 'date')}</span>
@@ -1064,12 +1103,12 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Customs Processing</strong>
-                        <p>Parcel is undergoing export customs clearance.</p>
+                        <strong>Export Customs</strong>
+                        <p>Consignment undergoing border security and export declaration.</p>
                       </div>
                     </div>
 
-                    {/* Step 3: Arrived at Export Zone */}
+                    {/* Step 3: Terminal Gate-In */}
                     <div className={`timeline-step truck-step ${progress >= 0.1 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.1), 'date')}</span>
@@ -1077,12 +1116,12 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Export Hub Arrival</strong>
-                        <p>Parcel arrived at Export Processing Zone.</p>
+                        <strong>Terminal Gate-In</strong>
+                        <p>Freight arrived at Origin Container Yard / Export Zone.</p>
                       </div>
                     </div>
 
-                    {/* Step 2: Seller preparing */}
+                    {/* Step 2: Cargo Stuffing */}
                     <div className={`timeline-step truck-step ${progress >= 0.05 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.05), 'date')}</span>
@@ -1090,12 +1129,12 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Preparation</strong>
-                        <p>Seller is preparing to ship your parcel.</p>
+                        <strong>Cargo Stuffing</strong>
+                        <p>Freight forwarder consolidating cargo and generating Bill of Lading.</p>
                       </div>
                     </div>
 
-                    {/* Step 1: Order Placed */}
+                    {/* Step 1: Booking Confirmed */}
                     <div className={`timeline-step truck-step ${progress >= 0.0 ? 'completed' : 'pending'}`}>
                       <div className="step-timestamp">
                         <span className="date">{formatShopeeTime(trackedShip.startTime, 'date')}</span>
@@ -1103,8 +1142,8 @@ const Simulation = () => {
                       </div>
                       <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
                       <div className="step-content">
-                        <strong>Order Placed</strong>
-                        <p>Order received at {trackedShip.category && trackedShip.category.includes('Perishable') ? 'Central Cold Storage' : 'Panabo North Facility'}.</p>
+                        <strong>Booking Confirmed</strong>
+                        <p>Transport order registered at {trackedShip.category && trackedShip.category.includes('Perishable') ? 'Central Cold Storage' : 'Panabo North Facility'}.</p>
                       </div>
                     </div>
 
@@ -1257,7 +1296,13 @@ const Simulation = () => {
           zoomSnap={0.5} 
           zoomDelta={0.5}
         >
-          <TileLayer url={isLightMode ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"} attribution='&copy; CARTO' />
+          <TileLayer 
+            url={isLightMode 
+              ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}" 
+              : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"} 
+            attribution='Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ' 
+          />
+          
           <MapFlyToHandler target={flyTarget} />
           
           <AutoFollowCamera targetPos={trackedNav?.pos} isAutoFollow={isAutoFollow} 

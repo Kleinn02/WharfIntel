@@ -1,0 +1,103 @@
+/* src/components/Profile.css */
+.dossier-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+  z-index: 9999; display: flex; justify-content: center; align-items: center;
+}
+
+.dossier-modal {
+  background: #0a0c10; border: 1px solid rgba(130, 160, 255, 0.2);
+  border-radius: 16px; width: 100%; max-width: 420px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5); position: relative;
+  overflow: hidden; font-family: 'Inter', sans-serif;
+}
+
+.dossier-close {
+  position: absolute; top: 20px; right: 20px;
+  background: transparent; border: none; color: #6b7280;
+  font-size: 16px; cursor: pointer; transition: 0.2s;
+}
+.dossier-close:hover { color: #ef4444; }
+
+/* HEADER */
+.dossier-header-section {
+  display: flex; align-items: center; gap: 16px; padding: 30px 30px 20px 30px;
+}
+.dossier-avatar {
+  width: 50px; height: 50px; background: linear-gradient(135deg, #6366f1, #82a0ff);
+  border-radius: 12px; display: flex; justify-content: center; align-items: center;
+  font-size: 24px; font-weight: bold; color: #fff; font-family: 'Space Mono', monospace;
+  box-shadow: 0 4px 15px rgba(130, 160, 255, 0.3);
+}
+.dossier-identity h2 { margin: 0 0 6px 0; font-size: 20px; color: #fff; }
+.clearance-tag {
+  background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981; padding: 4px 8px; border-radius: 4px; font-size: 10px;
+  font-weight: bold; font-family: 'Space Mono', monospace; letter-spacing: 0.5px;
+}
+
+/* TABS */
+.dossier-tabs {
+  display: flex; border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin: 0 30px; padding-bottom: 0;
+}
+.dossier-tab {
+  flex: 1; background: transparent; border: none; padding: 12px;
+  color: #6b7280; font-weight: 600; font-size: 13px; cursor: pointer;
+  border-bottom: 2px solid transparent; transition: 0.2s;
+}
+.dossier-tab.active { color: #82a0ff; border-bottom-color: #82a0ff; }
+.dossier-tab.danger.active { color: #ef4444; border-bottom-color: #ef4444; }
+
+/* CONTENT & INPUTS */
+.dossier-content { padding: 25px 30px 30px 30px; display: flex; flex-direction: column; gap: 20px; margin: 0; }
+.fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+.tactical-input-group { display: flex; flex-direction: column; gap: 6px; }
+.tactical-input-group label {
+  font-size: 10px; font-weight: bold; color: #94a3b8;
+  font-family: 'Space Mono', monospace; letter-spacing: 0.5px;
+}
+.input-with-icon { position: relative; }
+.tactical-input-group input {
+  width: 100%; padding: 12px 14px; background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+  color: #fff; font-size: 14px; box-sizing: border-box; transition: 0.2s;
+}
+.tactical-input-group input:focus { border-color: #82a0ff; outline: none; background: rgba(130, 160, 255, 0.05); }
+.tactical-input-group.readonly input { border-style: dashed; color: #6b7280; cursor: not-allowed; }
+.eye-icon { position: absolute; right: 14px; top: 12px; color: #6b7280; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.eye-icon:hover { color: #82a0ff; }
+
+/* BUTTONS */
+.dossier-submit-btn {
+  background: #82a0ff; color: #000; font-weight: bold; padding: 14px;
+  border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; transition: 0.2s;
+}
+.dossier-submit-btn:hover { background: #6b8cff; box-shadow: 0 4px 15px rgba(130,160,255,0.3); transform: translateY(-1px); }
+
+/* DANGER ZONE */
+.danger-title { color: #ef4444; margin: 0 0 5px 0; font-size: 16px; }
+.danger-warning-text { color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 0 0 10px 0; }
+.tactical-input-group.danger-input input:focus { border-color: #ef4444; background: rgba(239,68,68,0.05); }
+.dossier-nuke-btn {
+  background: transparent; color: #ef4444; border: 1px solid rgba(239,68,68,0.4);
+  font-weight: bold; padding: 14px; border-radius: 8px; cursor: pointer; margin-top: 10px; transition: 0.2s;
+}
+.dossier-nuke-btn:hover { background: rgba(239,68,68,0.1); border-color: #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.2); }
+
+/* STATUS MESSAGES */
+.dossier-status-msg {
+  padding: 10px 14px; border-radius: 6px; font-size: 11px;
+  font-family: 'Space Mono', monospace; font-weight: bold; text-align: center;
+  animation: fadeIn 0.2s;
+}
+.dossier-status-msg.success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+.dossier-status-msg.error { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+/* Light Mode Support (Optional, if Profile can be opened in Light Mode) */
+.dashboard-wrapper.light-mode .dossier-modal { background: #fff; border-color: #e5e7eb; }
+.dashboard-wrapper.light-mode .dossier-identity h2 { color: #111827; }
+.dashboard-wrapper.light-mode .tactical-input-group input { background: #f9fafb; border-color: #d1d5db; color: #111827; }
+.dashboard-wrapper.light-mode .dossier-tabs { border-color: #e5e7eb; }

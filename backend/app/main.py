@@ -110,7 +110,7 @@ BOOSTER_PRICING = {
 LIVE_VESSELS = {}
 
 async def fetch_ais_stream():
-    api_key = "0c7e24bd5f030997f83f24e7af7c97ea5e6ad73d" 
+    api_key = "9b10e83852926e663e32eb347078171bae11e0bc" 
     bounding_box = [[[-10.0, 100.0], [25.0, 145.0]]]
     subscribe_message = {
         "APIKey": api_key,
@@ -190,6 +190,11 @@ def register(user: UserAuth, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Commander ID already exists")
     new_user = User(username=user.username, hashed_password=get_password_hash(user.password))
     db.add(new_user)
+    
+    # 🔥 NEW: Permanent System Log
+    new_log = models.SystemLog(event_type="AUTH", description=f"New Commander provisioned: {user.username}")
+    db.add(new_log)
+    
     db.commit()
     return {"message": "Commander registered"}
 
@@ -242,6 +247,11 @@ def delete_account(username: str, data: AccountDelete, db: Session = Depends(get
     
     # Delete the user
     db.delete(user)
+    
+    # 🔥 NEW: Permanent System Log
+    new_log = models.SystemLog(event_type="SYSTEM", description=f"Commander decommissioned: {username}")
+    db.add(new_log)
+    
     db.commit()
     return {"message": "Commander decommissioned permanently."}
 
@@ -283,7 +293,7 @@ def get_live_radar():
     # 🔥 BUMP TO 1000: Leaflet MarkerCluster can handle this smoothly.
     return list(LIVE_VESSELS.values())[:1000]
 
-# 🔥 ROUTE HARMONIZATION: Changed endpoint path to match Admin.jsx tracking requests
+# 🔥 ROUTE HARMONIZATION: Updated to send authoritative cargo_health
 @app.get("/api/admin/ticketing/active")
 def get_all_active_exports(db: Session = Depends(get_db)):
     shipments = db.query(Shipment).all()
@@ -303,6 +313,7 @@ def get_all_active_exports(db: Session = Depends(get_db)):
             "storm_event_handled": s.storm_event_handled,
             "shelter_count": s.shelter_count,
             "storm_time": s.storm_time,
+            "cargo_health": getattr(s, 'cargo_health', 100.0), # 🔥 THE FIX: Send health to React
             "commander": user.username if user else "Unknown"
         })
     return result
@@ -339,12 +350,23 @@ def initiate_export(ticket: ShipmentCreate, background_tasks: BackgroundTasks, d
     # 🔥 THE FIX: Wrap the entire calculation in float() to strip the Numpy data type
     total_duration = float(predicted_hours * 60 * 60 * 500)  
 
+    # 🌩️ MACRO-CLIMATE INTEGRATION
+    # Pull the exact weather state at the moment the commander hits deploy
+    current_weather = get_weather_state(0)
+    weather_risk = current_weather["risk_percent"]
+    
     generated_storm_time = None
-    if True: # ⚠️ STORM TIMING ⚠️
+    
+    # Roll the dice against the live weather risk!
+    # If risk is 0.85 (Cyclone), they have an 85% chance of hitting a storm.
+    if random.random() < weather_risk: 
         # 🔥 DEEP OCEAN FIX: Force the storm to hit strictly between 30% and 75% of the trip
         impact_offset_percent = random.uniform(0.30, 0.75) 
         offset_seconds = (total_duration / 1000) * impact_offset_percent
         generated_storm_time = departure_time + timedelta(seconds=offset_seconds)
+        print(f"🌩️ DISASTER LOCKED: Vessel {ticket.cargo_name} will encounter severe weather.")
+    else:
+        print(f"☀️ CLEAR SKIES: Vessel {ticket.cargo_name} bypassed the anomaly.")
     
     new_shipment = Shipment(
         user_id=user.id,
@@ -375,67 +397,6 @@ def initiate_export(ticket: ShipmentCreate, background_tasks: BackgroundTasks, d
     return {"user_money": user.money, "shipment_id": new_shipment.id, "storm_time": generated_storm_time}
 
 # Inside main.py
-@app.post("/api/ticketing/{ship_id}/relaunch")
-def relaunch_shipment(ship_id: int, data: dict, db: Session = Depends(get_db)):
-    ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
-    user = db.query(User).filter(User.username == data.get("username")).first()
-    
-    choice = data.get("choice") 
-    current_idx = data.get("current_index", 0)
-    
-    safe_idx = max(0, min(current_idx, len(ship.route_waypoints) - 1))
-    current_coord = ship.route_waypoints[safe_idx]
-
-    # Find the nearest node in the dictionary to act as the starting point for recalculation
-    nearest_node = None
-    min_dist = float('inf')
-    for node_name, coords in pathfinder.WAYPOINTS.items():
-        dist = pathfinder.haversine(current_coord, coords)
-        if dist < min_dist:
-            min_dist = dist
-            nearest_node = node_name
-
-    if choice == 'REROUTE':
-        cost = DESTINATION_PRICING.get(ship.destination_country, 0) * 0.70
-        if user.money < cost:
-            raise HTTPException(status_code=400, detail="Insufficient credits for Reroute")
-        user.money -= cost
-        
-        if nearest_node:
-            avoid_nodes = []
-            if safe_idx + 1 < len(ship.route_waypoints):
-                next_coord = ship.route_waypoints[safe_idx + 1]
-                for n_name, n_coords in pathfinder.WAYPOINTS.items():
-                    if pathfinder.haversine(next_coord, n_coords) < 0.01:
-                        avoid_nodes.append(n_name)
-                        break 
-            
-            # 🔥 REROUTE: Uses the Bi-Directional REROUTE_GRAPH
-            new_route = pathfinder.a_star_route(nearest_node, ship.destination_country, avoid_nodes, use_reroute_graph=True)
-            
-            # Preserve history and append the new path
-            ship.route_waypoints = ship.route_waypoints[:safe_idx] + [current_coord] + new_route
-            ship.total_duration_ms += 86400000.0 # +1 Day delay
-            
-    elif choice == 'WAIT':
-        if nearest_node:
-            # 🔥 THE FIX: We MUST rebuild the path because 'Tactical Retreat' overwrote the future waypoints!
-            # We run A* from the Safe Haven to the destination, using the STANDARD GRAPH (use_reroute_graph=False)
-            resumed_route = pathfinder.a_star_route(nearest_node, ship.destination_country, use_reroute_graph=False)
-            
-            # Preserve the history up to the safe index, then append the newly calculated rest of the journey
-            ship.route_waypoints = ship.route_waypoints[:safe_idx] + [current_coord] + resumed_route
-            
-        ship.total_duration_ms += 172800000.0 # +2 Days delay
-
-    ship.status = "Outbound"
-    ship.storm_event_handled = True # Ensure it doesn't trigger another storm immediately
-    ship.storm_time = None 
-    
-    db.commit()
-    return {"user_money": user.money, "status": ship.status}
-
-# Inside main.py
 @app.post("/api/ticketing/{ship_id}/resolve_event")
 def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
     ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
@@ -449,6 +410,24 @@ def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
     safe_idx = max(0, min(current_idx, len(ship.route_waypoints) - 1))
     current_coord = ship.route_waypoints[safe_idx]
     
+    # 🔥 INJECT HEALTH PENALTY DATA FROM FRONTEND
+    health_penalty = data.get("health_penalty", 0)
+    
+    # Safety fallback just in case DB hasn't migrated yet
+    if not hasattr(ship, 'cargo_health') or ship.cargo_health is None:
+        ship.cargo_health = 100.0
+        
+    ship.cargo_health -= health_penalty
+    
+    # 💀 INSTANT FAIL STATE: Cargo destroyed
+    if ship.cargo_health <= 0:
+        ship.cargo_health = 0
+        ship.status = "Failed"
+        user.money -= 10000
+        user.reputation -= 15
+        db.commit()
+        return {"status": ship.status, "user_money": user.money, "reputation": user.reputation}
+
     # 🔥 ELITE KNOWLEDGE: The Safe Haven Mapping Doctrine
     SAFE_HAVENS = {
         "WP_SULU_SEA_MAIN": "WP_SARANGANI",
@@ -476,7 +455,6 @@ def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
         "WP_MYANMAR_ROUTE_1": "WP_NATUNA_SEA",
         "WP_MYANMAR_ROUTE_2": "WP_MYANMAR_ROUTE_1",
         "WP_MYANMAR_ROUTE_3": "WP_MALACCA",
-        # 🔥 THE MISSING LINKS: Added the early journey nodes just in case!
         "WP_DAVAO_GULF_NORTH": "DAVAO_PORT",
         "DAVAO_PORT": "Export Processing Zone",
     }
@@ -507,15 +485,10 @@ def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
             if fallback_node and fallback_node in pathfinder.WAYPOINTS:
                 safe_coord = pathfinder.WAYPOINTS[fallback_node]
             else:
-                # Guaranteed safety net: step backward one dot
                 retreat_idx = max(0, safe_idx - 1)
                 safe_coord = ship.route_waypoints[retreat_idx]
 
-            # 🔥 THE 99.99% GUARANTEED FIX: The Array Overwrite (No Slicing!)
-            # We preserve the exact array length so React's math doesn't glitch,
-            # but we force the active segment to equal the safe haven!
             updated_waypoints = list(ship.route_waypoints)
-            
             updated_waypoints[safe_idx] = safe_coord
             if safe_idx + 1 < len(updated_waypoints):
                 updated_waypoints[safe_idx + 1] = safe_coord
@@ -526,7 +499,9 @@ def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
             ship.route_waypoints = updated_waypoints
 
     elif choice == 'PUSH':
-        success = random.random() < 0.20 
+        # 🔥 THE LEARNING ENGINE FIX: No more random chance! Uses quiz result.
+        success = data.get("is_success", False) 
+        
         if success:
             user.money += 15000
             user.reputation += 10
@@ -539,7 +514,6 @@ def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
             else:
                 ship.status = "Sheltered"
                 
-                # 🔥 Applied the exact same math fix here so a failed push doesn't teleport either!
                 fallback_idx = max(0, safe_idx - 1)
                 safe_coord = ship.route_waypoints[fallback_idx]
                 
@@ -552,11 +526,90 @@ def resolve_ship_event(ship_id: int, data: dict, db: Session = Depends(get_db)):
                     
                 ship.route_waypoints = updated_waypoints
             
-    user.reputation = max(0, min(100, user.reputation))
+    user.reputation = max(0, user.reputation) # Removed the 100-point ceiling!
     ship.storm_event_handled = True
     
     db.commit()
     return {"status": ship.status, "user_money": user.money, "reputation": user.reputation}
+
+# Inside main.py
+@app.post("/api/ticketing/{ship_id}/relaunch")
+def relaunch_shipment(ship_id: int, data: dict, db: Session = Depends(get_db)):
+    ship = db.query(Shipment).filter(Shipment.id == ship_id).first()
+    user = db.query(User).filter(User.username == data.get("username")).first()
+    
+    choice = data.get("choice") 
+    current_idx = data.get("current_index", 0)
+    
+    safe_idx = max(0, min(current_idx, len(ship.route_waypoints) - 1))
+    current_coord = ship.route_waypoints[safe_idx]
+
+    # 🔥 APPLY HEALTH DAMAGE FROM WAIT/REROUTE ACTIONS
+    health_penalty = data.get("health_penalty", 0)
+    if not hasattr(ship, 'cargo_health') or ship.cargo_health is None:
+        ship.cargo_health = 100.0
+        
+    ship.cargo_health -= health_penalty
+    
+    # 💀 INSTANT FAIL STATE: Cargo destroyed
+    if ship.cargo_health <= 0:
+        ship.cargo_health = 0
+        ship.status = "Failed"
+        db.commit()
+        return {"user_money": user.money, "status": ship.status}
+
+    nearest_node = None
+    min_dist = float('inf')
+    for node_name, coords in pathfinder.WAYPOINTS.items():
+        dist = pathfinder.haversine(current_coord, coords)
+        if dist < min_dist:
+            min_dist = dist
+            nearest_node = node_name
+
+    if choice == 'REROUTE':
+        # 🔥 THE LEARNING ENGINE FIX: Check if they passed the route quiz
+        success = data.get("is_success", False)
+        
+        if success:
+            cost = DESTINATION_PRICING.get(ship.destination_country, 0) * 0.70
+            if user.money < cost:
+                raise HTTPException(status_code=400, detail="Insufficient credits for Reroute")
+            user.money -= cost
+            
+            if nearest_node:
+                avoid_nodes = []
+                if safe_idx + 1 < len(ship.route_waypoints):
+                    next_coord = ship.route_waypoints[safe_idx + 1]
+                    for n_name, n_coords in pathfinder.WAYPOINTS.items():
+                        if pathfinder.haversine(next_coord, n_coords) < 0.01:
+                            avoid_nodes.append(n_name)
+                            break 
+                
+                new_route = pathfinder.a_star_route(nearest_node, ship.destination_country, avoid_nodes, use_reroute_graph=True)
+                
+                ship.route_waypoints = ship.route_waypoints[:safe_idx] + [current_coord] + new_route
+                ship.total_duration_ms += 86400000.0 # +1 Day delay
+        else:
+            # 🔥 FAILED REROUTE: Forced to Wait It Out as penalty
+            if nearest_node:
+                resumed_route = pathfinder.a_star_route(nearest_node, ship.destination_country, use_reroute_graph=False)
+                ship.route_waypoints = ship.route_waypoints[:safe_idx] + [current_coord] + resumed_route
+                
+            ship.total_duration_ms += 172800000.0 # +2 Days delay penalty
+            
+    elif choice == 'WAIT':
+        if nearest_node:
+            resumed_route = pathfinder.a_star_route(nearest_node, ship.destination_country, use_reroute_graph=False)
+            ship.route_waypoints = ship.route_waypoints[:safe_idx] + [current_coord] + resumed_route
+            
+        ship.total_duration_ms += 172800000.0 # +2 Days delay
+
+    ship.status = "Outbound"
+    ship.storm_event_handled = True 
+    ship.storm_time = None 
+    
+    db.commit()
+    return {"user_money": user.money, "status": ship.status}
 
 @app.post("/api/ticketing/{ship_id}/arrive")
 def resolve_arrival(ship_id: int, data: dict, db: Session = Depends(get_db)):
@@ -584,8 +637,20 @@ def resolve_arrival(ship_id: int, data: dict, db: Session = Depends(get_db)):
         
     user.money += payout
     
-    # Small reputation bump for a successful delivery
-    user.reputation = min(100, user.reputation + 2) 
+    # 🔥 DYNAMIC REPUTATION REWARD: Scales with Cargo Health
+    health = getattr(ship, 'cargo_health', 100.0)
+    if health >= 100:
+        rep_gain = 10
+    elif health >= 90:
+        rep_gain = 8
+    elif health >= 70:
+        rep_gain = 5
+    elif health >= 50:
+        rep_gain = 2
+    else:
+        rep_gain = 1 # Barely survived, but still delivered
+        
+    user.reputation += rep_gain
     ship.status = "Arrived"
     
     db.commit()
@@ -615,6 +680,84 @@ def activate_booster(username: str, data: dict, db: Session = Depends(get_db)):
     return {"money": user.money, "active_boosters": user.active_boosters}
 
 from datetime import datetime
+
+# ==========================================
+# 🌩️ MACRO-CLIMATE ENGINE (STOCHASTIC + ADMIN)
+# ==========================================
+import time
+
+# 🔥 GLOBALS FOR OVERRIDE, EXPIRATION, AND SYNC EPOCH
+ADMIN_WEATHER_OVERRIDE = None
+ADMIN_OVERRIDE_EXPIRY = None
+LAST_AUTO_RESTART_TIME = datetime.utcnow() # 🔥 NEW: Tracks when Auto was clicked
+
+def get_weather_state(offset_minutes=0):
+    global ADMIN_WEATHER_OVERRIDE, ADMIN_OVERRIDE_EXPIRY, LAST_AUTO_RESTART_TIME
+    target_time = datetime.utcnow() + timedelta(minutes=offset_minutes)
+    
+    # 1. ADMIN OVERRIDE CHECK (God Mode)
+    if ADMIN_WEATHER_OVERRIDE and ADMIN_OVERRIDE_EXPIRY:
+        if target_time < ADMIN_OVERRIDE_EXPIRY:
+            if ADMIN_WEATHER_OVERRIDE == "NOMINAL":
+                return {"state": "NOMINAL", "risk_percent": 0.05, "pressure": 1013, "color": "#2ecc71"}
+            elif ADMIN_WEATHER_OVERRIDE == "DETERIORATING":
+                return {"state": "DETERIORATING", "risk_percent": 0.35, "pressure": 998, "color": "#f1c40f"}
+            elif ADMIN_WEATHER_OVERRIDE == "CYCLONE IMMINENT":
+                return {"state": "CYCLONE IMMINENT", "risk_percent": 0.85, "pressure": 960, "color": "#e74c3c"}
+        else:
+            # OVERRIDE EXPIRED! Revert to Auto automatically and restart the clock
+            if offset_minutes == 0: 
+                ADMIN_WEATHER_OVERRIDE = None
+                ADMIN_OVERRIDE_EXPIRY = None
+                LAST_AUTO_RESTART_TIME = datetime.utcnow()
+
+    # 2. STANDARD STOCHASTIC RNG (Dynamic Epoch)
+    # 🔥 FIX: Calculates exactly how much time has passed since Auto was clicked
+    elapsed_seconds = (target_time - LAST_AUTO_RESTART_TIME).total_seconds()
+    if elapsed_seconds < 0: elapsed_seconds = 0 
+    
+    time_chunk = int(elapsed_seconds // 300)
+    chunk_rng = random.Random(time_chunk)
+    roll = chunk_rng.random()
+    
+    if roll < 0.60:
+        return {"state": "NOMINAL", "risk_percent": 0.05, "pressure": 1013, "color": "#2ecc71"}
+    elif roll < 0.90:
+        return {"state": "DETERIORATING", "risk_percent": 0.35, "pressure": 998, "color": "#f1c40f"}
+    else: 
+        return {"state": "CYCLONE IMMINENT", "risk_percent": 0.85, "pressure": 960, "color": "#e74c3c"}
+
+@app.get("/api/analytics/weather")
+def get_global_weather():
+    global ADMIN_OVERRIDE_EXPIRY, ADMIN_WEATHER_OVERRIDE, LAST_AUTO_RESTART_TIME
+    current_weather = get_weather_state(0)
+    
+    forecast = [
+        {"time": "+15m", "data": get_weather_state(15)},
+        {"time": "+30m", "data": get_weather_state(30)},
+        {"time": "+45m", "data": get_weather_state(45)}
+    ]
+    
+    now = datetime.utcnow()
+    
+    # CALCULATE THE EXACT EXPIRATION TIMESTAMP FOR THE FRONTEND TIMER
+    if ADMIN_WEATHER_OVERRIDE and ADMIN_OVERRIDE_EXPIRY and ADMIN_OVERRIDE_EXPIRY > now:
+        next_shift = ADMIN_OVERRIDE_EXPIRY.isoformat() + "Z"
+    else:
+        # 🔥 FIX: Dynamic 5-minute loop calculation based on Last Restart Epoch
+        elapsed = (now - LAST_AUTO_RESTART_TIME).total_seconds()
+        if elapsed < 0: elapsed = 0
+        remainder_seconds = elapsed % 300
+        seconds_to_next = 300 - remainder_seconds
+        next_shift = (now + timedelta(seconds=seconds_to_next)).isoformat() + "Z"
+    
+    return {
+        "current": current_weather,
+        "forecast": forecast,
+        "system_time": now.isoformat() + "Z",
+        "next_shift_time": next_shift,
+        "admin_override": ADMIN_WEATHER_OVERRIDE
+    }
 
 @app.get("/api/analytics/forecast")
 def get_congestion_forecast():
@@ -710,6 +853,51 @@ def get_congestion_zones():
 # ==========================================
 # SYSTEM OVERWATCH (ADMIN ENDPOINTS)
 # ==========================================
+
+class WeatherOverride(BaseModel):
+    state: Optional[str] # "NOMINAL", "DETERIORATING", "CYCLONE IMMINENT", or None
+    duration_minutes: Optional[int] = 5 # 🔥 NEW: Accept duration
+
+# 🔥 UPDATED: Now saves to the permanent log database
+@app.post("/api/admin/weather/override")
+def set_weather_override(data: WeatherOverride, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    global ADMIN_WEATHER_OVERRIDE, ADMIN_OVERRIDE_EXPIRY, LAST_AUTO_RESTART_TIME
+    
+    ADMIN_WEATHER_OVERRIDE = data.state
+    
+    if data.state:
+        # Lock in the specific duration
+        ADMIN_OVERRIDE_EXPIRY = datetime.utcnow() + timedelta(minutes=data.duration_minutes)
+    else:
+        # 🔥 THE MASTER FIX: When switching to AUTO, reset the 5-minute timer epoch to right NOW!
+        ADMIN_OVERRIDE_EXPIRY = None
+        LAST_AUTO_RESTART_TIME = datetime.utcnow()
+        
+    status = ADMIN_WEATHER_OVERRIDE if ADMIN_WEATHER_OVERRIDE else 'AUTO (Stochastic)'
+    
+    new_log = models.SystemLog(event_type="CLIMATE", description=f"Global weather locked to: {status}")
+    db.add(new_log)
+    db.commit()
+    
+    background_tasks.add_task(manager.broadcast, {
+        "event": "SYNC_WEATHER",
+        "action": f"Global climate shifted to {status}"
+    })
+    
+    return {"message": f"Global weather locked to: {status}"}
+
+# 🔥 NEW: Endpoint to fetch permanent logs for the Admin Dashboard
+@app.get("/api/admin/logs")
+def get_system_logs(db: Session = Depends(get_db), limit: int = 50):
+    logs = db.query(models.SystemLog).order_by(models.SystemLog.timestamp.desc()).limit(limit).all()
+    return [
+        {
+            "id": l.id, 
+            "timestamp": l.timestamp.isoformat(), 
+            "event_type": l.event_type, 
+            "description": l.description
+        } for l in logs
+    ]
 
 @app.get("/api/admin/users")
 def get_all_users(db: Session = Depends(get_db)):

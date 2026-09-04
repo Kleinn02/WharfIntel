@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-// import './Dashboard.css';
-// import './AuthStyle.css';
+import WeatherHUD from './WeatherHUD';
 import './Admin.css';
 
 // --- OVERWATCH MAP HELPERS ---
@@ -55,7 +54,6 @@ const NATIONAL_HUBS = [
   { id: 202, pos: [10.292, 123.901], name: 'Cebu International Port', type: 'REGIONAL HUB', stat: 'Capacity: 82%' },
   { id: 203, pos: [13.756, 121.058], name: 'Batangas Terminal', type: 'NATIONAL HUB', stat: 'Capacity: 79%' }
 ];
-
 const GLOBAL_HUBS = [
   { id: 101, pos: [1.290, 103.850], name: 'Port of Singapore', type: 'GLOBAL HUB', stat: 'Capacity: 95%' },
   { id: 102, pos: [10.823, 106.629], name: 'Ho Chi Minh Terminal', type: 'REGIONAL HUB', stat: 'Capacity: 80%' },
@@ -76,24 +74,33 @@ const createHouseIcon = (color) => {
   });
 };
 
-// Mock Economy Data for the Graph
-  const economyData = [
-    { day: 'Mon', revenue: 850000 }, { day: 'Tue', revenue: 920000 },
-    { day: 'Wed', revenue: 980000 }, { day: 'Thu', revenue: 1050000 },
-    { day: 'Fri', revenue: 1120000 }, { day: 'Sat', revenue: 1150000 },
-    { day: 'Sun', revenue: 1189900 },
-  ];
+const economyData = [
+  { day: 'Mon', revenue: 850000 }, { day: 'Tue', revenue: 920000 },
+  { day: 'Wed', revenue: 980000 }, { day: 'Thu', revenue: 1050000 },
+  { day: 'Fri', revenue: 1120000 }, { day: 'Sat', revenue: 1150000 },
+  { day: 'Sun', revenue: 1189900 },
+];
 
 const Admin = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('personnel'); // 'personnel' | 'voyages'
+  const [activeTab, setActiveTab] = useState('personnel'); 
   const [users, setUsers] = useState([]);
   const [globalFleets, setGlobalFleets] = useState([]);
+  // 🔥 NEW: Weather Modal State
+  const [overrideModal, setOverrideModal] = useState({ isOpen: false, state: null, duration: 5 });
   
-  // Modal State
+  // UI State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('create'); 
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showFacilityOps, setShowFacilityOps] = useState(true);
+  const [showClimate, setShowClimate] = useState(false); // 🔥 Repurposed from showEnvironment
+  const [weatherSyncTrigger, setWeatherSyncTrigger] = useState(0); // 🔥 NEW: Syncs HUD to Admin actions
   
+  // Data State
+  const [systemLogs, setSystemLogs] = useState([]); // 🔥 State for DB logs
+  const [activeWeatherOverride, setActiveWeatherOverride] = useState(null);
+
   // Form State
   const [editId, setEditId] = useState(null);
   const [username, setUsername] = useState('');
@@ -101,55 +108,31 @@ const Admin = () => {
   const [money, setMoney] = useState(200000);
   const [reputation, setReputation] = useState(50);
   const [message, setMessage] = useState('');
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [showFacilityOps, setShowFacilityOps] = useState(true);
-  
-  // 🔥 NEW: Environment Panel States
-  const [showEnvironment, setShowEnvironment] = useState(false);
-  const [selectedZoneSize, setSelectedZoneSize] = useState(120000); // Default to Category 4
-  const [anomalies, setAnomalies] = useState([]);
 
-  // 🔥 NEW: Toggle Handlers to make them mutually exclusive
   const toggleFacilityOps = () => {
     setShowFacilityOps(true);
-    setShowEnvironment(false);
+    setShowClimate(false);
   };
 
-  const toggleEnvironment = () => {
-    setShowEnvironment(true);
+  const toggleClimate = () => {
+    setShowClimate(true);
     setShowFacilityOps(false);
   };
 
-  // 🔥 NEW: The Map Click Listener
-  const AnomalyDrawer = () => {
-    useMapEvents({
-      click(e) {
-        // Only allow drawing if the Environment panel is actively open!
-        if (activeTab === 'voyages' && showEnvironment) {
-          setAnomalies(prev => [...prev, { pos: e.latlng, radius: selectedZoneSize }]);
-        }
-      }
-    });
-    return null;
-  };
-
-  // 1. SECURITY PROTOCOL: Kick out non-admins instantly
   useEffect(() => {
     const currentUser = localStorage.getItem('username');
-    // Change this logic based on how your backend assigns admin roles
     if (currentUser !== 'admin' && localStorage.getItem('role') !== 'admin') {
       navigate('/dashboard'); 
     }
   }, [navigate]);
 
-  // 2. READ: Fetch Data based on active tab
   const fetchData = async () => {
     try {
-      // 🔥 ALWAYS fetch personnel
+      // 1. Fetch Users
       const resUsers = await fetch('http://127.0.0.1:8000/api/admin/users');
       if (resUsers.ok) setUsers(await resUsers.json());
 
-      // 🔥 ALWAYS fetch active ships so the background map populates immediately
+      // 2. Fetch Active Ships
       const resShips = await fetch('http://127.0.0.1:8000/api/admin/ticketing/active'); 
       if (resShips.ok) {
         const ships = await resShips.json();
@@ -159,7 +142,7 @@ const Admin = () => {
             ...s,
             id: shipId,
             cargo: s.cargo_name,
-            category: s.category, // 🔥 Sync category for Health math
+            category: s.category, 
             waypoints: typeof s.route_waypoints === 'string' ? JSON.parse(s.route_waypoints) : s.route_waypoints,
             startTime: new Date(s.departure_time).getTime(),
             duration: s.total_duration_ms,
@@ -168,17 +151,29 @@ const Admin = () => {
         });
         setGlobalFleets(mappedShips);
       }
+
+      // 3. 🔥 Fetch Permanent System Logs
+      const resLogs = await fetch('http://127.0.0.1:8000/api/admin/logs');
+      if (resLogs.ok) setSystemLogs(await resLogs.json());
+
+      // 4. 🔥 NEW: Fetch Live Weather to keep Admin buttons synced without refreshing!
+      const resWeather = await fetch('http://127.0.0.1:8000/api/analytics/weather');
+      if (resWeather.ok) {
+        const weatherData = await resWeather.json();
+        // This will automatically highlight the correct button based on the backend state
+        setActiveWeatherOverride(weatherData.admin_override);
+      }
+
     } catch (err) {
       console.error("Failed to fetch overwatch data:", err);
     }
   };
 
-  // Poll for updates ALWAYS so the background map stays alive
   useEffect(() => { 
     fetchData(); 
-    const interval = setInterval(fetchData, 1000); // Constant live map updates
+    const interval = setInterval(fetchData, 1000); 
     return () => clearInterval(interval);
-  }, []); // <-- Empty array so it mounts once and runs forever
+  }, []); 
 
   const handleLogout = () => {
     localStorage.removeItem('username');
@@ -186,12 +181,31 @@ const Admin = () => {
     navigate('/');
   };
 
-  const [systemLogs, setSystemLogs] = useState([
-  { id: 1, time: new Date().toLocaleTimeString(), action: "Admin 'PJ Teves' authenticated.", type: "AUTH" },
-  { id: 2, time: new Date().toLocaleTimeString(), action: "Database sync established.", type: "SYSTEM" }
-  ]);
+  // 🔥 NEW: God Mode Weather Control Sender
+  const initiateWeatherOverride = (state) => {
+    if (state === null) {
+      handleWeatherOverride(null, 0); // AUTO mode doesn't need a duration
+    } else {
+      setOverrideModal({ isOpen: true, state: state, duration: 5 });
+    }
+  };
 
-  // --- CRUD Modals ---
+  const handleWeatherOverride = async (state, duration) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/admin/weather/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: state, duration_minutes: duration })
+      });
+      if (res.ok) {
+        setActiveWeatherOverride(state);
+        setOverrideModal({ ...overrideModal, isOpen: false });
+        setWeatherSyncTrigger(prev => prev + 1); // 🔥 INSTANTLY SYNC THE WEATHER HUD!
+        fetchData(); // Instantly refresh logs
+      }
+    } catch (e) { console.error("Override failed", e); }
+  };
+
   const openCreateModal = () => {
     setModalMode('create'); setUsername(''); setPassword('');
     setMoney(200000); setReputation(50); setMessage(''); setIsModalOpen(true);
@@ -230,7 +244,6 @@ const Admin = () => {
     } catch (err) { alert("Failed to delete user."); }
   };
 
-  // --- Map Math Helper (Synced with Simulation!) ---
   const calculateNavigation = (ship) => {
     const shipPersonalTime = Date.now() + (ship.timeOffset || 0);
     const elapsed = shipPersonalTime - ship.startTime;
@@ -253,7 +266,6 @@ const Admin = () => {
     let currentPhase = { type: 'vessel', label: 'Ocean Transit (Vessel)', step: 2 };
     if (progress < 0.20) currentPhase = { type: 'truck', label: 'Origin Hub (Truck)', step: 1 };
 
-    // 🔥 ELITE KNOWLEDGE: Dynamic Health Bar Logic synced from Simulation
     let currentHealth = 100;
     const isPerishable = (ship.category && ship.category.includes('Perishable')) || (ship.cargo && (ship.cargo.toLowerCase().includes('banana') || ship.cargo.toLowerCase().includes('food') || ship.cargo.toLowerCase().includes('fruit') || ship.cargo.toLowerCase().includes('meat') || ship.cargo.toLowerCase().includes('fish')));
 
@@ -279,22 +291,14 @@ const Admin = () => {
   return (
     <div className="dashboard-wrapper admin-theme dark-mode" style={{ backgroundColor: '#050505', height: '100vh', width: '100vw', overflow: 'hidden', position: 'relative' }}>
       
-      {/* 🔥 1. THE FULLSCREEN BACKGROUND MAP & CYBER GRID (Always On) 🔥 */}
+      {/* 1. THE FULLSCREEN BACKGROUND MAP & CYBER GRID */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 0 }}>
         
         <MapContainer center={[7.284, 125.681]} zoom={5} minZoom={4} maxZoom={18} maxBounds={typeof SEA_BOUNDS !== 'undefined' ? SEA_BOUNDS : undefined} className="leaflet-container" zoomControl={false} style={{ width: '100%', height: '100%', background: '#030303' }}>
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution='&copy; CARTO' />
-
-          {/* 🔥 THE GOD'S EYE ANOMALY DRAWER & CIRCLES */}
-          <AnomalyDrawer />
-          {anomalies.map((anomaly, idx) => (
-            <Circle 
-              key={`anomaly-${idx}`} 
-              center={anomaly.pos} 
-              radius={anomaly.radius} 
-              pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.15, weight: 1, dashArray: '5, 10' }} 
-            />
-          ))}
+         <TileLayer 
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}" 
+            attribution='Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ' 
+          />
           
           {/* Hub Markers */}
           {PANABO_HUBS.map(hub => <Marker key={hub.id} position={hub.pos} icon={createHouseIcon('#10b981')} />)}
@@ -313,7 +317,6 @@ const Admin = () => {
                   <Marker key={`dot-${i}`} position={wp} icon={createDotIcon()} />
                 ))}
 
-                {/* 🔥 THE FIX: Upgraded Popup matching Simulation layout (Without warp buttons) */}
                 <Marker position={nav.pos} icon={createTransportIcon(nav.phase.type, exp.status, nav.angle, nav.health)}>
                   <Popup className="custom-popup dark-popup">
                     <div style={{ padding: '12px', textAlign: 'left', minWidth: '180px' }}>
@@ -360,7 +363,7 @@ const Admin = () => {
           })}
         </MapContainer>
 
-        {/* 🔥 ENHANCED MAP RADAR GRID OVERLAY */}
+        {/* ENHANCED MAP RADAR GRID OVERLAY */}
         <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.1) 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
       </div>
 
@@ -408,27 +411,34 @@ const Admin = () => {
       <main 
         className="map-view" 
         style={{ 
-          padding: activeTab === 'voyages' ? '0' : '32px 32px 32px 0',
-          overflowY: activeTab === 'voyages' ? 'hidden' : 'auto', 
+          padding: activeTab === 'voyages' ? '0' : '16px 16px 16px 0', /* 🔥 Perfect 16px gap from sidebar */
+          overflow: 'hidden', 
           position: 'relative',
-          height: '100vh',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 10,
           pointerEvents: activeTab === 'voyages' ? 'none' : 'auto',
-          background: 'transparent',
-          backdropFilter: 'none'
+          boxSizing: 'border-box'
         }}
       >
         
         {/* --- TAB: PERSONNEL --- */}
         {activeTab === 'personnel' && (
-          <div style={{ pointerEvents: 'auto', background: 'rgba(5, 5, 5, 0.85)', backdropFilter: 'blur(12px)', padding: '30px', borderRadius: '20px', border: '1px solid var(--cyber-border)', boxShadow: '0 10px 40px rgba(0,0,0,0.6)', height: 'fit-content' }}>
+          <div style={{ 
+            pointerEvents: 'auto', 
+            background: 'rgba(5, 5, 5, 0.85)', 
+            backdropFilter: 'blur(12px)', 
+            padding: '24px', 
+            borderRadius: '20px', 
+            border: '1px solid var(--cyber-border)', 
+            boxShadow: '0 10px 40px rgba(0,0,0,0.6)', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            flex: 1, 
+            minHeight: 0, /* 🔥 CRUCIAL: Forces Chrome to scroll internally instead of overflowing screen */
+            boxSizing: 'border-box'
+          }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-              <div>
-                <h2 style={{ color: '#fff', margin: '0 0 8px 0', fontSize: '24px', fontWeight: 'bold' }}>System Administration</h2>
-                <span style={{ color: '#94a3b8', fontSize: '13px' }}>Authoritative overwatch panel for active simulator instances.</span>
-              </div>
               <button 
                 onClick={openCreateModal}
                 style={{ backgroundColor: 'var(--cyber-green)', color: '#000', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer', transition: '0.2s', boxShadow: '0 0 15px var(--cyber-glow)' }}
@@ -484,8 +494,8 @@ const Admin = () => {
               </div>
             </div>
 
-            {/* Glassmorphic Table Bento Box Block */}
-            <div className="bento-main-table-card">
+            {/* 🔥 Added flex: 1 and overflowY so the table scrolls, not the page! */}
+            <div className="bento-main-table-card" style={{ flex: 1, overflowY: 'auto', minHeight: '200px' }}>
               <table className="admin-custom-table">
                 <thead>
                   <tr>
@@ -524,19 +534,23 @@ const Admin = () => {
           </div>
         )}
 
-        {/* --- TAB: GLOBAL MAP OVERWATCH (Now just the floating UI) --- */}
+        {/* --- TAB: GLOBAL MAP OVERWATCH --- */}
         {activeTab === 'voyages' && (
           <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-            
-            {/* Left Side: Admin Map Overlay Header */}
-            <div style={{ position: 'absolute', top: '25px', left: '25px', zIndex: 1000, background: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(10px)', padding: '15px 20px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.3)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', pointerEvents: 'auto' }}>
+
+            {/* 🔥 GLOBAL OVERWATCH HEADER (Top Left, perfectly aligned with sidebar) */}
+            <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 1000, background: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(10px)', padding: '15px 20px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.3)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', pointerEvents: 'auto' }}>
               <h3 style={{ margin: '0 0 5px 0', color: '#10b981', fontFamily: 'monospace', textTransform: 'uppercase' }}>Global Overwatch</h3>
               <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Tracking {globalFleets.filter(f => f.status === 'Outbound').length} Active Deployments</p>
             </div>
 
-            {/* Right Side: Stacked Ops & Environment Panels */}
-            <div style={{ position: 'absolute', top: '25px', right: '25px', display: 'flex', flexDirection: 'column', gap: '15px', zIndex: 1000, pointerEvents: 'auto', width: '320px' }}>
-              
+            {/* 🔥 WEATHER HUD (Bottom Left, directly next to the Disconnect button) */}
+            <div style={{ position: 'absolute', bottom: '16px', left: '16px', zIndex: 1000, pointerEvents: 'auto' }}>
+               <WeatherHUD syncTrigger={weatherSyncTrigger} />
+            </div>
+
+            <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', flexDirection: 'column', gap: '15px', zIndex: 1000, pointerEvents: 'auto', width: '320px' }}>
+                   
               {/* 1. FACILITY OPS PANEL */}
               <div className={`admin-ops-panel ${!showFacilityOps ? 'minimized' : ''}`} style={{ position: 'relative', top: 0, right: 0, width: '100%', padding: showFacilityOps ? '16px' : '10px 16px', margin: 0, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
                 {!showFacilityOps ? (
@@ -579,36 +593,48 @@ const Admin = () => {
                 )}
               </div>
 
-              {/* 2. ENVIRONMENT CONTROLS PANEL */}
-              <div className={`admin-ops-panel ${!showEnvironment ? 'minimized' : ''}`} style={{ position: 'relative', top: 0, right: 0, width: '100%', padding: showEnvironment ? '16px' : '10px 16px', margin: 0, border: '1px solid rgba(239, 68, 68, 0.4)', boxShadow: '0 8px 32px rgba(239, 68, 68, 0.15)' }}>
-                {!showEnvironment ? (
-                  <div onClick={toggleEnvironment} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', cursor: 'pointer' }}>
-                    <span>ENVIRONMENT OVERRIDE</span>
+              {/* 2. 🔥 REPLACED: GLOBAL CLIMATE DIRECTIVE PANEL */}
+              <div className={`admin-ops-panel ${!showClimate ? 'minimized' : ''}`} style={{ position: 'relative', top: 0, right: 0, width: '100%', padding: showClimate ? '16px' : '10px 16px', margin: 0, border: '1px solid rgba(130, 160, 255, 0.4)', boxShadow: '0 8px 32px rgba(130, 160, 255, 0.15)' }}>
+                {!showClimate ? (
+                  <div onClick={toggleClimate} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#82a0ff', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', cursor: 'pointer' }}>
+                    <span>GLOBAL CLIMATE DIRECTIVE</span>
                   </div>
                 ) : (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid rgba(239, 68, 68, 0.3)', paddingBottom: '10px' }}>
-                      <h3 style={{ margin: 0, fontSize: '14px', color: '#ef4444' }}>ENVIRONMENT OVERRIDE</h3>
-                      <button onClick={() => setShowEnvironment(false)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '18px' }}>×</button>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid rgba(130, 160, 255, 0.3)', paddingBottom: '10px' }}>
+                      <h3 style={{ margin: 0, fontSize: '14px', color: '#82a0ff' }}>GLOBAL CLIMATE DIRECTIVE</h3>
+                      <button onClick={() => setShowClimate(false)} style={{ background: 'none', border: 'none', color: '#82a0ff', cursor: 'pointer', fontSize: '18px' }}>×</button>
                     </div>
                     
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <p style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', margin: '0' }}>Select Anomaly Size (Click map to deploy)</p>
-                      
-                      <button onClick={() => setSelectedZoneSize(60000)} style={{ padding: '10px', background: selectedZoneSize === 60000 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.02)', border: `1px solid ${selectedZoneSize === 60000 ? '#ef4444' : '#333'}`, color: '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
-                        <strong style={{ color: '#ef4444' }}>Category 3</strong> (60km Radius)
+                    <p style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', margin: '0 0 10px 0' }}>Override Stochastic RNG Engine</p>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <button 
+                        onClick={() => initiateWeatherOverride(null)} 
+                        style={{ padding: '10px', background: activeWeatherOverride === null ? 'rgba(130, 160, 255, 0.2)' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === null ? '#82a0ff' : '#333'}`, color: '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px' }}
+                      >
+                        🎲 AUTO (STOCHASTIC)
                       </button>
                       
-                      <button onClick={() => setSelectedZoneSize(120000)} style={{ padding: '10px', background: selectedZoneSize === 120000 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.02)', border: `1px solid ${selectedZoneSize === 120000 ? '#ef4444' : '#333'}`, color: '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
-                        <strong style={{ color: '#ef4444' }}>Category 4</strong> (120km Radius)
+                      <button 
+                        onClick={() => initiateWeatherOverride('NOMINAL')} 
+                        style={{ padding: '10px', background: activeWeatherOverride === 'NOMINAL' ? '#2ecc71' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === 'NOMINAL' ? '#2ecc71' : '#333'}`, color: activeWeatherOverride === 'NOMINAL' ? '#000' : '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px', fontWeight: activeWeatherOverride === 'NOMINAL' ? 'bold' : 'normal' }}
+                      >
+                        🟢 FORCE NOMINAL <span style={{fontSize: '10px', opacity: 0.8}}>(5% Risk)</span>
                       </button>
                       
-                      <button onClick={() => setSelectedZoneSize(250000)} style={{ padding: '10px', background: selectedZoneSize === 250000 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.02)', border: `1px solid ${selectedZoneSize === 250000 ? '#ef4444' : '#333'}`, color: '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
-                        <strong style={{ color: '#ef4444' }}>Category 5</strong> (250km Radius)
+                      <button 
+                        onClick={() => initiateWeatherOverride('DETERIORATING')} 
+                        style={{ padding: '10px', background: activeWeatherOverride === 'DETERIORATING' ? '#f1c40f' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === 'DETERIORATING' ? '#f1c40f' : '#333'}`, color: activeWeatherOverride === 'DETERIORATING' ? '#000' : '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px', fontWeight: activeWeatherOverride === 'DETERIORATING' ? 'bold' : 'normal' }}
+                      >
+                        🟡 FORCE DETERIORATING <span style={{fontSize: '10px', opacity: 0.8}}>(35% Risk)</span>
                       </button>
 
-                      <button onClick={() => setAnomalies([])} style={{ marginTop: '10px', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '11px', letterSpacing: '1px' }}>
-                        PURGE ALL ANOMALIES
+                      <button 
+                        onClick={() => initiateWeatherOverride('CYCLONE IMMINENT')} 
+                        style={{ padding: '10px', background: activeWeatherOverride === 'CYCLONE IMMINENT' ? '#e74c3c' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === 'CYCLONE IMMINENT' ? '#e74c3c' : '#333'}`, color: '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px', fontWeight: activeWeatherOverride === 'CYCLONE IMMINENT' ? 'bold' : 'normal' }}
+                      >
+                        🔴 FORCE CYCLONE <span style={{fontSize: '10px', opacity: 0.8}}>(85% Risk)</span>
                       </button>
                     </div>
                   </>
@@ -621,20 +647,90 @@ const Admin = () => {
 
         {/* --- TAB: SYSTEM LOGS --- */}
         {activeTab === 'logs' && (
-          <div style={{ pointerEvents: 'auto', background: 'rgba(5, 5, 5, 0.85)', backdropFilter: 'blur(12px)', padding: '30px', borderRadius: '20px', border: '1px solid var(--cyber-border)', boxShadow: '0 10px 40px rgba(0,0,0,0.6)', height: 'fit-content', marginRight: '32px' }}>
-            <h2 style={{ color: '#fff', margin: '0 0 20px 0', fontSize: '24px' }}>Server Audit Logs</h2>
-            <div className="bento-main-table-card" style={{ padding: '20px', minHeight: '500px' }}>
-              {systemLogs.map(log => (
-                <div key={log.id} style={{ display: 'flex', gap: '15px', padding: '12px 0', borderBottom: '1px solid rgba(16, 185, 129, 0.1)', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>
-                  <span style={{ color: '#6b7280' }}>[{log.time}]</span>
-                  <span style={{ color: log.type === 'AUTH' ? '#3498db' : 'var(--cyber-green)', width: '60px' }}>{log.type}</span>
-                  <span style={{ color: '#e8eaf0' }}>{log.action}</span>
-                </div>
-              ))}
+          <div style={{ 
+            pointerEvents: 'auto', 
+            background: 'rgba(5, 5, 5, 0.85)', 
+            backdropFilter: 'blur(12px)', 
+            padding: '24px', 
+            borderRadius: '20px', 
+            border: '1px solid var(--cyber-border)', 
+            boxShadow: '0 10px 40px rgba(0,0,0,0.6)', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            flex: 1,
+            minHeight: 0, /* 🔥 CRUCIAL for Chrome flexbox scrolling */
+            boxSizing: 'border-box' 
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ color: '#fff', margin: 0, fontSize: '24px' }}>Server Audit Logs</h2>
+              <span className="badge docked">IMMUTABLE LEDGER</span>
+            </div>
+            {/* 🔥 Uses flex: 1 and minHeight: 0 to force internal scrolling */}
+            <div className="bento-main-table-card" style={{ padding: '20px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+
+              {systemLogs.length > 0 ? systemLogs.map(log => {
+                const d = new Date(log.timestamp);
+                const timeString = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')} ${d.toLocaleDateString()}`;
+                return (
+                  <div key={log.id} style={{ display: 'flex', gap: '15px', padding: '12px 0', borderBottom: '1px solid rgba(16, 185, 129, 0.1)', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>
+                    <span style={{ color: '#6b7280', minWidth: '130px' }}>[{timeString}]</span>
+                    <span style={{ 
+                      color: log.event_type.includes('SYSTEM') ? '#ef4444' : 
+                             log.event_type.includes('CLIMATE') ? '#f1c40f' : '#3498db', 
+                      minWidth: '70px', fontWeight: 'bold' 
+                    }}>
+                      {log.event_type}
+                    </span>
+                    <span style={{ color: '#e8eaf0' }}>{log.description}</span>
+                  </div>
+                );
+              }) : (
+                <p style={{ color: '#6b7280', textAlign: 'center', marginTop: '20px' }}>No audit logs recorded yet.</p>
+              )}
             </div>
           </div>
         )}
       </main>
+
+      {/* --- WEATHER DURATION MODAL --- */}
+      {overrideModal.isOpen && (
+        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setOverrideModal({ ...overrideModal, isOpen: false })}>
+          <div className="card auth-modal-card admin-modal-card" onClick={e => e.stopPropagation()} style={{ minHeight: 'auto', paddingBottom: '30px' }}>
+            <button className="exit-btn" onClick={() => setOverrideModal({ ...overrideModal, isOpen: false })}>&times;</button>
+            
+            <div className="screen-title" style={{ color: overrideModal.state === 'CYCLONE IMMINENT' ? '#ef4444' : '#f1c40f', marginBottom: '24px' }}>
+              Confirm Climate Override
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleWeatherOverride(overrideModal.state, overrideModal.duration); }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              <div style={{ padding: '15px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', borderLeft: `3px solid ${overrideModal.state === 'CYCLONE IMMINENT' ? '#ef4444' : '#f1c40f'}` }}>
+                <strong style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>TARGET STATE: {overrideModal.state}</strong>
+                <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>This will immediately force all connected simulation instances into this weather state.</p>
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label>DURATION (MINUTES)</label>
+                <div className="input-wrap">
+                  <input 
+                    type="number" 
+                    value={overrideModal.duration} 
+                    onChange={e => setOverrideModal({...overrideModal, duration: parseInt(e.target.value)})} 
+                    min="1" 
+                    required 
+                  />
+                </div>
+                <p style={{ margin: '5px 0 0 0', fontSize: '10px', color: '#6b7280' }}>No maximum limit. Engine reverts to AUTO when timer expires.</p>
+              </div>
+              
+              <button type="submit" className="btn-primary" style={{ backgroundColor: overrideModal.state === 'CYCLONE IMMINENT' ? '#ef4444' : '#f1c40f', color: '#000', marginTop: '10px' }}>
+                EXECUTE OVERRIDE
+              </button>
+            </form>
+          </div>
+        </div>
+        )
+      }
 
       {/* --- CREATE / EDIT MODAL --- */}
       {isModalOpen && (
@@ -671,7 +767,7 @@ const Admin = () => {
                 <div className="form-group" style={{ margin: 0 }}>
                   <label>Reputation (0-100)</label>
                   <div className="input-wrap">
-                    <input type="number" value={reputation} onChange={e => setReputation(e.target.value)} min="0" max="100" required />
+                    <input type="number" value={reputation} onChange={e => setReputation(e.target.value)} min="0" required />
                   </div>
                 </div>
               </div>
@@ -683,6 +779,7 @@ const Admin = () => {
           </div>
         </div>
       )}
+      
       {/* --- LOGOUT WARNING MODAL --- */}
       {showLogoutModal && (
         <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setShowLogoutModal(false)}>
@@ -698,7 +795,6 @@ const Admin = () => {
       )}
     </div>
   );
-  
 };
 
 export default Admin;

@@ -6,6 +6,7 @@ import './Dashboard.css';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
+import LiveWeatherWidget from './LiveWeatherWidget'; // Update path if needed
 import Profile from './Profile';
 
 // --- MATH HELPER: HAVERSINE DISTANCE ---
@@ -44,12 +45,17 @@ const createVesselIcon = (status, heading, isAnimated = true) => {
   });
 };
 
-const CustomMapControls = () => {
+// 🔥 Passed isLightMode and setIsLightMode as props
+const CustomMapControls = ({ isLightMode, setIsLightMode }) => {
   const map = useMap();
   return (
     <div className="custom-map-controls">
       <button className="control-btn" title="Zoom In" onClick={() => map.zoomIn(2)}>+</button>
       <button className="control-btn" title="Zoom Out" onClick={() => map.zoomOut(3)}>−</button>
+      {/* 🔥 The relocated Dark/Light mode toggle */}
+      <button className="control-btn theme-map-btn" title="Toggle Theme" onClick={() => setIsLightMode(!isLightMode)}>
+        {isLightMode ? <MoonIcon /> : <SunIcon />}
+      </button>
     </div>
   );
 };
@@ -65,6 +71,13 @@ const FlyToVessel = ({ focusedVessel }) => {
 };
 
 // --- ICON COMPONENTS ---
+const UserIcon = () => (
+  <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
 const MapIcon = () => (
   <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 20L3 17V4L9 7M9 20L15 17M9 20V7M15 17L21 20V7L15 4M15 17V4" />
@@ -204,6 +217,31 @@ const Dashboard = () => {
     return matchesSearch && matchesStatus;
   });
 
+  // 🔥 NEW: Custom Sleek Tooltip for the Recharts Graph
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ 
+        background: '#0f172a', 
+        border: '1px solid #334155', 
+        borderRadius: '8px', 
+        padding: '12px 16px', 
+        boxShadow: '0 10px 25px rgba(0,0,0,0.5)' 
+      }}>
+        <p style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 'bold', color: '#94a3b8' }}>
+          {label}
+        </p>
+        {payload.map((entry, index) => (
+          <p key={index} style={{ margin: 0, fontSize: '15px', color: entry.color, fontWeight: 'bold' }}>
+            {entry.name} : {entry.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
   return (
     <div className={`dashboard-wrapper ${isLightMode ? 'light-mode' : 'dark-mode'}`}>
       
@@ -286,22 +324,18 @@ const Dashboard = () => {
         </div>
         
         <div className="sidebar-content">
-          {/* --- NEW PROFILE CARD TRIGGER --- */}
-          <div className="commander-card" onClick={() => setShowProfile(true)}>
-            <div className="cc-avatar">
-              {currentUsername.charAt(0).toUpperCase()}
-            </div>
-            <div className="cc-info">
-              <span className="cc-name">{currentUsername}</span>
-              <span className="cc-status"><span className="status-dot"></span> Online</span>
-            </div>
-            <div className="cc-gear">⚙️</div>
-          </div>
-
           <div className="nav-group">
             <p className="nav-title">MAIN MENU</p>
             <nav className="side-nav">
-              {/* ... Keep your Live Map, Traffic, Analytics buttons exactly the same ... */}
+              {/* 🔥 The New Streamlined Profile Button */}
+              <button onClick={() => setShowProfile(true)}>
+                <UserIcon /> 
+                <span className="nav-text" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                  Profile
+                  {/* Subtle online indicator */}
+                  <span style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 6px #10b981' }}></span>
+                </span>
+              </button>
               <button className={activeMenu === 'live_map' ? 'active' : ''} onClick={() => setActiveMenu('live_map')}>
                 <MapIcon /> <span className="nav-text">Live Map</span>
               </button>
@@ -319,23 +353,6 @@ const Dashboard = () => {
               <button className="sim-btn" onClick={() => navigate('/simulation')}>
                 <SimIcon /> <span className="nav-text">Enter Simulation</span>
               </button>
-              
-              {/* Theme Switch moved ABOVE Logout and blended to look like a nav button */}
-              <div className="theme-toggle-btn" onClick={() => setIsLightMode(!isLightMode)}>
-                
-                <div className="theme-icon">
-                  {isLightMode ? <SunIcon /> : <MoonIcon />}
-                </div>
-                
-                <span className="nav-text">{isLightMode ? 'Light Mode' : 'Dark Mode'}</span>
-                
-                <div className="theme-toggle-switch">
-                  {/* pointerEvents: 'none' fixes the clicking bug! */}
-                  <input type="checkbox" id="theme-switch" checked={isLightMode} readOnly style={{ pointerEvents: 'none' }} />
-                  <label className="theme-slider" style={{ pointerEvents: 'none' }}></label>
-                </div>
-                
-              </div>
 
               {/* Logout moved to the very bottom */}
               <button className="logout-btn" onClick={() => setShowLogout(true)}>
@@ -346,8 +363,10 @@ const Dashboard = () => {
         </div>
       </aside>
       
-      <main className="map-view">
+      <main className={`map-view ${isSidebarOpen ? 'sidebar-expanded' : ''}`}>
         <div className="radar-grid-overlay"></div>
+        {/* 🔥 NEW: Live Real-World Weather Widget */}
+        <LiveWeatherWidget />
         {/* 🔥 UPDATED MAP CONTAINER: Default SEA Center, Bounds, and Zoom */}
         <MapContainer 
           center={SEA_CENTER} 
@@ -361,9 +380,15 @@ const Dashboard = () => {
           zoomSnap={0.5} 
           zoomDelta={0.5}
         >
-          <TileLayer url={isLightMode ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"} attribution='&copy; CARTO' />
+          <TileLayer 
+            url={isLightMode 
+              ? "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}" 
+              : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"} 
+            attribution='Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ' 
+          />
           
-          <CustomMapControls />
+          {/* 🔥 Pass props to the map controls */}
+          <CustomMapControls isLightMode={isLightMode} setIsLightMode={setIsLightMode} />
           <FlyToVessel focusedVessel={focusedVessel} />
 
           <MarkerClusterGroup chunkedLoading maxClusterRadius={40} showCoverageOnHover={false}>
@@ -451,7 +476,8 @@ const Dashboard = () => {
               <h3>Predictive Analytics</h3>
               <span className="badge outbound" style={{ background: '#82a0ff', color: '#fff' }}>RF Active</span>
             </div>
-            <div className="stats-grid">
+            
+            <div className="stats-grid" style={{ marginBottom: '16px' }}>
               <div className="stat-box"><span className="stat-label">Live Traffic</span><span className="stat-value">{vessels.length}</span></div>
               <div className="stat-box">
                 <span className="stat-label">72h Risk Trend</span>
@@ -462,23 +488,58 @@ const Dashboard = () => {
                 </span>
               </div>
             </div>
-            <h4 className="section-title" style={{ marginTop: '20px' }}>Congestion Forecast (Time-Series)</h4>
-            <div style={{ width: '100%', height: '200px', marginTop: '10px' }}>
+            
+            <h4 className="section-title">Congestion Forecast (Time-Series)</h4>
+            <div style={{ width: '100%', height: '180px' }}> {/* Slightly reduced height */}
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={forecastData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                  <XAxis dataKey="day" stroke="#94a3b8" fontSize={12} tickLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }} itemStyle={{ color: '#f8fafc' }} />
-                  <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}/>
+                  <XAxis dataKey="day" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                  
+                  {/* 🔥 UPDATED: Using our new CustomTooltip */}
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 2 }} />
+                  
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '5px' }}/>
                   <Line type="monotone" name="Actual Traffic" dataKey="historical" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 0 }} />
                   <Line type="monotone" name="AI Forecast" dataKey="predicted" stroke="#f59e0b" strokeWidth={3} strokeDasharray="5 5" dot={{ r: 4, fill: '#f59e0b', strokeWidth: 0 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
-              <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '15px', textAlign: 'center' }}>*Model trained on regional transit data to forecast bottleneck probabilities.</p>
+
+            {/* 🔥 UPDATED: Explainable AI Threat Matrix Legend */}
+            <div className="threat-matrix-legend">
+              <div className="tm-item">
+                <div className="tm-color-bar" style={{ background: '#10b981' }}></div>
+                <div className="tm-info">
+                  <strong>NOMINAL</strong>
+                  <p>Standard traffic flow. Minimal bottleneck probability.</p>
+                </div>
+              </div>
+              <div className="tm-item">
+                <div className="tm-color-bar" style={{ background: '#f59e0b' }}></div>
+                <div className="tm-info">
+                  <strong>ELEVATED</strong>
+                  <p>Developing bottleneck. Route deviations recommended.</p>
+                </div>
+              </div>
+              <div className="tm-item">
+                <div className="tm-color-bar" style={{ background: '#ef4444' }}></div>
+                <div className="tm-info">
+                  <strong>CRITICAL</strong>
+                  <p>Severe gridlock detected. Imminent logistics delays.</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* 🗑️ DELETED the disclaimer text here! */}
+            
           </div>
         )}
+
+        {/* 🔥 FIX: Moved the Radar Grid here so it renders OVER the map! */}
+        <div className="radar-grid-overlay"></div>
+        
       </main>
     </div>
   );
