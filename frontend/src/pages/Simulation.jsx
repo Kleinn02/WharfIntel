@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './Simulation.css';
 import AssessmentModal from './AssessmentModal';
+import VesselHelm3D from './VesselHelm3D'; // 🔥 NEW: 3D Boat Physics Simulator
 import WeatherHUD from './WeatherHUD'; // 🔥 Add this line
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import TopHUD from './TopHUD';
@@ -178,6 +179,7 @@ const Simulation = () => {
   const [weatherSyncTrigger, setWeatherSyncTrigger] = useState(0); // 🔥 NEW: Triggers HUD update
   const [relaunchEvent, setRelaunchEvent] = useState(null); // 🔥 THE FIX: Added Relaunch State!
   const [assessmentConfig, setAssessmentConfig] = useState(null);
+  const [useLegacyQuiz, setUseLegacyQuiz] = useState(false); // 🔥 Keeps quiz hidden unless toggled!  
   const [ticketForm, setTicketForm] = useState({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global' });
   const [selectedTrackingId, setSelectedTrackingId] = useState(null);
   const [flyTarget, setFlyTarget] = useState(null);
@@ -865,14 +867,25 @@ const Simulation = () => {
         </div>
       )}
 
-      {/* 🧠 THE LEARNING SIMULATION MODAL */}
+      {/* 🧠 3D HELM SIMULATOR (With Non-Destructive Toggle to Legacy Quiz) */}
       {assessmentConfig && (
-        <AssessmentModal 
-          mode={assessmentConfig.type} 
-          cargo={assessmentConfig.event.cargo}
-          initialHealth={assessmentConfig.health}
-          onComplete={(result) => processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result)}
-        />
+        useLegacyQuiz ? (
+          <AssessmentModal 
+            mode={assessmentConfig.type} 
+            cargo={assessmentConfig.event.cargo}
+            initialHealth={assessmentConfig.health}
+            onComplete={(result) => processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result)}
+          />
+        ) : (
+          <VesselHelm3D
+            mode={assessmentConfig.type}
+            cargo={assessmentConfig.event.cargo}
+            weightKg={assessmentConfig.event.weightKg || Number(ticketForm.weight) || 3500}
+            initialHealth={assessmentConfig.health}
+            onComplete={(result) => processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result)}
+            onSwitchToQuiz={() => setUseLegacyQuiz(true)}
+          />
+        )
       )}
   
       {/* ⚠️ PHASE 1: INITIAL STORM DETECTED MODAL */}
@@ -1432,12 +1445,23 @@ const Simulation = () => {
                             </div>
 
                              {exp.status === 'Outbound' && (
-                               <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
-                                 {/* 🔥 THE FIX: The middle button mathematically calculates exactly 1% progress per real-time second! */}
-                                 <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, 1)}>▶</button>
-                                 <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed > 1 && exp.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, Math.max(2, Math.floor(exp.duration * 0.01 / 1000)))}>⏭</button>
-                                 <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, 21600)}>🚀</button>
-                               </div>
+                               <>
+                                 <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                                   {/* 🔥 THE FIX: The middle button mathematically calculates exactly 1% progress per real-time second! */}
+                                   <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, 1)}>▶</button>
+                                   <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed > 1 && exp.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, Math.max(2, Math.floor(exp.duration * 0.01 / 1000)))}>⏭</button>
+                                   <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, 21600)}>🚀</button>
+                                 </div>
+
+                                 {/* 🔥 NEW: Manual 3D Helm Trigger Button */}
+                                 {/* 🔥 NEW: Manual 3D Helm Trigger Button */}
+                                 <button className="btn-launch-sim" style={{ width: '100%', marginTop: '8px', padding: '7px', fontSize: '11px' }} onClick={() => { changeShipSpeed(exp.id, 0); setUseLegacyQuiz(false); setAssessmentConfig({
+                                       event: exp, type: 'PUSH', health: parseFloat(nav.health) || 100});
+                                   }}
+                                 >
+                                   ⚓ PILOT VESSEL (3D)
+                                 </button>
+                               </>
                              )}
                            </>
                         )}
