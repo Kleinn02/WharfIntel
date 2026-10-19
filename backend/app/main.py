@@ -326,8 +326,8 @@ def initiate_export(ticket: ShipmentCreate, background_tasks: BackgroundTasks, d
     weight_multiplier = ticket.weight_kg / 1000.0
     cost = int(base_cost * weight_multiplier)
 
-    if user.money < cost:
-        raise HTTPException(status_code=400, detail="Insufficient persistent credits")
+    # if user.money < cost:
+    #     raise HTTPException(status_code=400, detail="Insufficient persistent credits")
     
     start_time_str = ticket.departure_time
     departure_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00')) if start_time_str else datetime.utcnow()

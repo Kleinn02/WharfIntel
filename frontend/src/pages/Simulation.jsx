@@ -296,6 +296,18 @@ const Simulation = () => {
     });
   };
 
+  // 🔥 UNIVERSAL 3D HELM LAUNCHER
+  const launchManual3DHelm = (shipObj, currentHealthVal) => {
+    if (!shipObj) return;
+    changeShipSpeed(shipObj.id, 0);
+    setUseLegacyQuiz(false);
+    setAssessmentConfig({
+      event: shipObj,
+      type: 'PUSH',
+      health: parseFloat(currentHealthVal) || 100
+    });
+  };
+
   // 🔥 THE CINEMATIC WARP SEQUENCE
   const triggerWarpSequence = (shipId, newSpeed) => {
     // If it's just normal play/pause, do it instantly without moving the camera
@@ -438,6 +450,7 @@ const Simulation = () => {
             id: shipId,
             rawId: s.id, 
             cargo: s.cargo_name, 
+            weightKg: s.weight_kg || 2500,
             cargoType: s.scale, 
             category: s.category, 
             commander: s.commander, 
@@ -740,7 +753,7 @@ const Simulation = () => {
   const activeShipCount = myShips.filter(exp => exp.status !== 'Arrived' && exp.status !== 'Failed').length;
   const isFleetFull = activeShipCount >= 3;
 
-  const trackedShip = activeExports.find(s => s.id === selectedTrackingId) || activeExports[activeExports.length - 1];
+  const trackedShip = activeExports.find(s => s.id === selectedTrackingId) || myShips.find(s => s.status === 'Outbound') || activeExports[activeExports.length - 1];
   let trackedNav = null;
   let progress = 0; // 🔥 NEW: Track precise 0.0 to 1.0 progress
   if (trackedShip) {
@@ -765,34 +778,15 @@ const Simulation = () => {
         </button>
       )}
 
-      {/* 🔥 Hide Exit Button when AUTO is ON to prevent breaking the simulation */}
+      {/* 🔥 MACRO-CLIMATE WEATHER HUD & REPUTATION */}
       {!isAutoFollow && (
         <>
-          <button className="sim-exit-btn" onClick={() => setShowExitModal(true)}>
-            <LogoutIcon />
-          </button>
-          
-          {/* 🔥 THE NEW BOOSTER TRIGGER BUTTON */}
-          <button className="sim-booster-btn" onClick={() => setShowBoosters(true)}>
-            ⚡ BLACK MARKET
-          </button>
+          <div style={{ position: 'absolute', bottom: '105px', left: '25px', background: 'rgba(5, 7, 10, 0.85)', padding: '10px 15px', borderRadius: '10px', border: '1px solid var(--border-color)', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 'bold', zIndex: 2000, backdropFilter: 'blur(12px)' }}>
+            REP: <span style={{ color: 'var(--accent-blue)' }}>{resources.reputation}</span>
+          </div>
+          <WeatherHUD onWeatherUpdate={setGlobalWeather} syncTrigger={weatherSyncTrigger} />
         </>
       )}
-
-      {/* 🔥 MACRO-CLIMATE WEATHER HUD */}
-      {!isAutoFollow && <WeatherHUD onWeatherUpdate={setGlobalWeather} syncTrigger={weatherSyncTrigger} />}
-
-      {/* 🔥 THE TACTICAL TERMINAL */}
-      <div className="tactical-terminal" ref={terminalRef}></div>
-
-      {/* 🔥 THE TACTICAL TERMINAL */}
-      <div className="tactical-terminal" ref={terminalRef}>
-        {terminalLogs.map((log, idx) => (
-          <div key={idx} className={`terminal-line ${log.type}`}>
-            <span className="timestamp">[{log.time}]</span> {log.msg}
-          </div>
-        ))}
-      </div>
 
       {showExitModal && (
         <div className="modal-overlay">
@@ -801,67 +795,6 @@ const Simulation = () => {
             <div className="modal-actions">
               <button className="btn-cancel" onClick={() => setShowExitModal(false)}>Cancel</button>
               <button className="btn-confirm-exit" onClick={() => navigate('/dashboard')}>Confirm Exit</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ⚡ THE BLACK MARKET BOOSTER MODAL */}
-      {showBoosters && (
-        <div className="modal-overlay" style={{ zIndex: 10000 }} onClick={() => setShowBoosters(false)}>
-          <div className="boosters-modal" onClick={e => e.stopPropagation()}>
-            <div className="boosters-header">
-              <h2 style={{ margin: 0, color: '#f1c40f', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                ⚡ TACTICAL ASSETS
-              </h2>
-              <button className="close-booster-btn" onClick={() => setShowBoosters(false)}>✕</button>
-            </div>
-            
-            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px' }}>
-              Acquire off-the-books logistics advantages. Transactions are final.
-            </p>
-
-            <div className="boosters-grid">
-              
-              {/* ITEM 1: Chaos Evader */}
-              <div className="booster-card">
-                <div className="booster-icon" style={{ background: 'rgba(52, 152, 219, 0.1)', color: '#3498db' }}>🛡️</div>
-                <div className="booster-info">
-                  <h4>Chaos Evader</h4>
-                  <p>Guaranteed 100% success rate when pushing through the next severe weather anomaly.</p>
-                </div>
-                <div className="booster-action">
-                  <span className="booster-price">$100,000</span>
-                  <button onClick={() => handleMockPurchase('Chaos Evader')}>ACQUIRE</button>
-                </div>
-              </div>
-
-              {/* ITEM 2: Buy Reputation */}
-              <div className="booster-card">
-                <div className="booster-icon" style={{ background: 'rgba(46, 204, 113, 0.1)', color: '#2ecc71' }}>🤝</div>
-                <div className="booster-info">
-                  <h4>Port Influence</h4>
-                  <p>Bribe local port authorities to permanently increase your global reputation standing.</p>
-                </div>
-                <div className="booster-action">
-                  <span className="booster-price">$100,000</span>
-                  <button onClick={() => handleMockPurchase('Port Influence (+10 Rep)')}>+10 REP</button>
-                </div>
-              </div>
-
-              {/* ITEM 3: Sell Reputation */}
-              <div className="booster-card">
-                <div className="booster-icon" style={{ background: 'rgba(231, 76, 60, 0.1)', color: '#e74c3c' }}>💰</div>
-                <div className="booster-info">
-                  <h4>Reputation Liquidator</h4>
-                  <p>Burn your established goodwill with harbor masters in exchange for immediate liquid capital.</p>
-                </div>
-                <div className="booster-action">
-                  <span className="booster-price cost-rep">-10 REP</span>
-                  <button className="sell-btn" onClick={() => handleMockPurchase('Liquid Capital (+$70,000)')}>+$70,000</button>
-                </div>
-              </div>
-
             </div>
           </div>
         </div>
@@ -879,11 +812,16 @@ const Simulation = () => {
         ) : (
           <VesselHelm3D
             mode={assessmentConfig.type}
+            weatherState={globalWeather}
             cargo={assessmentConfig.event.cargo}
-            weightKg={assessmentConfig.event.weightKg || Number(ticketForm.weight) || 3500}
+            weightKg={assessmentConfig.event.weightKg || Number(ticketForm.weight) || 2500}
             initialHealth={assessmentConfig.health}
             onComplete={(result) => processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result)}
             onSwitchToQuiz={() => setUseLegacyQuiz(true)}
+            onExit={() => {
+              changeShipSpeed(assessmentConfig.event.id, 1);
+              setAssessmentConfig(null);
+            }}
           />
         )
       )}
@@ -945,8 +883,6 @@ const Simulation = () => {
          {showFloatingIncome && <div className="floating-income-text" style={{ color: 'var(--accent-blue)' }}>+$50</div>}
       </div>
       
-      <TopHUD resources={resources} />
-
       {notification && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className={`custom-notification ${notification.type}`}>
@@ -1036,6 +972,30 @@ const Simulation = () => {
                 <div className="tracking-info-header">
                   <h4 style={{ margin: '0 0 5px 0', textTransform: 'uppercase' }}>{trackedShip.cargo}</h4>
                   <p className="text-muted" style={{ margin: 0 }}>{trackedShip.id} • {trackedShip.destination}</p>
+
+                  {/* 🔥 GUARANTEED PLACE 1: 3D Button inside the Right-Hand Tracking Detail Panel */}
+                  {trackedShip.status === 'Outbound' && (
+                    <button
+                      type="button"
+                      className="btn-launch-sim"
+                      style={{
+                        width: '100%',
+                        marginTop: '12px',
+                        padding: '10px',
+                        fontSize: '12px',
+                        backgroundColor: '#82a0ff',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        display: 'block'
+                      }}
+                      onClick={() => launchManual3DHelm(trackedShip, trackedNav.health)}
+                    >
+                      3D SIMULATION
+                    </button>
+                  )}
                 </div>
 
                 <div className="scrollable-timeline-container">
@@ -1267,8 +1227,7 @@ const Simulation = () => {
               <input list="filtered-destinations" type="text" required placeholder="Select destination..." value={ticketForm.destination} onChange={e => setTicketForm({...ticketForm, destination: e.target.value})} className="modern-input" />
               <datalist id="filtered-destinations">{getOptions().map(port => <option key={port} value={port} />)}</datalist>
             </div>
-            <div className="cost-tag">Logistics Cost: ${currentRouteCost > 0 ? currentRouteCost.toLocaleString() : "0"}</div>
-            <button type="submit" className={`btn-launch-sim ${isFleetFull ? 'state-deployed' : ''}`} disabled={resources.money < currentRouteCost || currentRouteCost === 0 || isFleetFull}>
+            <button type="submit" className={`btn-launch-sim ${isFleetFull ? 'state-deployed' : ''}`} disabled={isFleetFull}>
               {isFleetFull ? "⏳ FLEET AT CAPACITY (3/3)" : "Confirm Order"}
             </button>
           </form>
@@ -1393,7 +1352,7 @@ const Simulation = () => {
                   {/* 🔥 HIDE POPUP WHEN AUTO IS ON (Prevents dual-modals on screen) */}
                   {!(isAutoFollow && selectedTrackingId === exp.id) && (
                     <Popup className="custom-popup dark-popup">
-                      <div style={{ padding: '12px', textAlign: 'left', minWidth: '180px' }}>
+                      <div style={{ padding: '12px', textAlign: 'left', minWidth: '190px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                           <div>
                             <h4 style={{ margin: 0, color: '#3498db', textTransform: 'uppercase' }}>{exp.cargo}</h4>
@@ -1420,48 +1379,39 @@ const Simulation = () => {
                            <p style={{ color: '#e74c3c', fontWeight: 'bold', textAlign: 'center' }}>CONTRACT TERMINATED</p>
                         ) : (
                            <>
-                             <div style={{ marginBottom: '10px' }}>
-                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#aaa', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                 <span>Goods Health</span><span>{nav.health}%</span>
-                               </div>
-                               <div style={{ width: '100%', height: '6px', background: '#333', borderRadius: '3px', overflow: 'hidden' }}>
-                                 <div style={{ width: `${nav.health}%`, height: '100%', background: nav.health < 70 ? '#e74c3c' : 'var(--accent-blue)', transition: 'width 0.3s' }}></div>
-                               </div>
-                             </div>
-
-                             <div style={{ padding: '6px', borderRadius: '4px', marginBottom: '12px', border: '1px solid rgba(130, 160, 255, 0.1)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                <span>Current Phase</span>
-                                <span>Progress</span>
+                             {/* --- NEW DASHBOARD UI --- */}
+                              <div style={{ marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#aaa', textTransform: 'uppercase', marginBottom: '4px' }}>
+                                  <span>Goods Health</span><span>{nav.health}%</span>
+                                </div>
+                                <div style={{ width: '100%', height: '6px', background: '#333', borderRadius: '3px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${nav.health}%`, height: '100%', background: nav.health < 70 ? '#e74c3c' : 'var(--accent-blue)', transition: 'width 0.3s' }}></div>
+                                </div>
                               </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 'bold' }}>
-                                  {exp.status === 'Arrived' ? 'DELIVERED' : nav.phase.label.toUpperCase()}
-                                </span>
-                                <strong style={{ color: 'var(--accent-blue)', fontSize: '12px' }}>
-                                  {exp.status === 'Arrived' ? '100.0' : ((Math.min(((Date.now() + (exp.timeOffset || 0)) - exp.startTime) / exp.duration, 1)) * 100).toFixed(1)}%
-                                </strong>
+
+                              <div className="telemetry-grid">
+                                <div className="telemetry-box">
+                                  <span className="tele-label">DIST TO PORT</span>
+                                  <span className="tele-val">{exp.status === 'Arrived' ? '0' : Math.max(1, Math.round(1000 - ((Math.min(((Date.now() + (exp.timeOffset || 0)) - exp.startTime) / exp.duration, 1)) * 1000)))} <small>NM</small></span>
+                                </div>
+                                <div className="telemetry-box">
+                                  <span className="tele-label">HEADING</span>
+                                  <span className="tele-val">{Math.round(nav.angle)}°</span>
+                                </div>
+                                <div className="telemetry-box">
+                                  <span className="tele-label">LATITUDE</span>
+                                  <span className="tele-val">{nav.pos[0].toFixed(4)}</span>
+                                </div>
+                                <div className="telemetry-box">
+                                  <span className="tele-label">LONGITUDE</span>
+                                  <span className="tele-val">{nav.pos[1].toFixed(4)}</span>
+                                </div>
                               </div>
-                            </div>
 
-                             {exp.status === 'Outbound' && (
-                               <>
-                                 <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
-                                   {/* 🔥 THE FIX: The middle button mathematically calculates exactly 1% progress per real-time second! */}
-                                   <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, 1)}>▶</button>
-                                   <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed > 1 && exp.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, Math.max(2, Math.floor(exp.duration * 0.01 / 1000)))}>⏭</button>
-                                   <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${exp.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '6px 12px', fontSize: '12px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(exp.id, 21600)}>🚀</button>
-                                 </div>
+                              {exp.status === 'Outbound' && (
+                                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
-                                 {/* 🔥 NEW: Manual 3D Helm Trigger Button */}
-                                 {/* 🔥 NEW: Manual 3D Helm Trigger Button */}
-                                 <button className="btn-launch-sim" style={{ width: '100%', marginTop: '8px', padding: '7px', fontSize: '11px' }} onClick={() => { changeShipSpeed(exp.id, 0); setUseLegacyQuiz(false); setAssessmentConfig({
-                                       event: exp, type: 'PUSH', health: parseFloat(nav.health) || 100});
-                                   }}
-                                 >
-                                   ⚓ PILOT VESSEL (3D)
-                                 </button>
-                               </>
+                                </div>
                              )}
                            </>
                         )}
@@ -1512,11 +1462,14 @@ const Simulation = () => {
               </div>
 
               {trackedShip.status === 'Outbound' && (
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
-                  {/* 🔥 THE FIX: Applied the same 1% Dynamic Math here */}
-                  <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 1)}>▶</button>
-                  <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed > 1 && trackedShip.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, Math.max(2, Math.floor(trackedShip.duration * 0.01 / 3000)))}>⏭</button>
-                  <button disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 21600)}>🚀</button>
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                    {/* 🔥 THE FIX: Applied the same 1% Dynamic Math here */}
+                    <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 1)}>▶</button>
+                    <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed > 1 && trackedShip.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, Math.max(2, Math.floor(trackedShip.duration * 0.01 / 3000)))}>⏭</button>
+                    <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 21600)}>🚀</button>
+                  </div>
+
                 </div>
               )}
             </div>

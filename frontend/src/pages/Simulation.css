@@ -583,7 +583,7 @@
 /* --- The Clickable Pill (Bottom Left) --- */
 .weather-hud-pill {
   position: absolute;
-  bottom: 175px; 
+  bottom: 40px; 
   left: 25px;
   background: rgba(5, 7, 10, 0.85);
   backdrop-filter: blur(12px);
@@ -839,4 +839,72 @@
 }
 .sim-wrapper.light-mode.weather-cyclone-imminent .climate-overlay {
   background: radial-gradient(circle at 50% 50%, rgba(231, 76, 60, 0.1) 0%, rgba(71, 85, 105, 0.5) 50%, rgba(15, 23, 42, 0.8) 100%);
+}
+
+/* 18. MAP POPUP TELEMETRY DASHBOARD */
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 12px; /* Adds vertical space for the horizontal line */
+  position: relative;
+  margin-bottom: 12px;
+  padding: 8px 0; /* Breathing room top and bottom */
+}
+
+/* 🔥 The Vertical Y-Axis Line */
+.telemetry-grid::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  background-color: var(--border-color);
+  transform: translateX(-50%);
+}
+
+/* 🔥 The Horizontal X-Axis Line */
+.telemetry-grid::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background-color: var(--border-color);
+  transform: translateY(-50%);
+}
+
+.telemetry-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Pushes the text away from the center cross so it looks clean */
+.telemetry-box:nth-child(odd) {
+  padding-right: 10px;
+}
+.telemetry-box:nth-child(even) {
+  padding-left: 10px;
+}
+
+.tele-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: bold;
+}
+
+.tele-val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: bold;
+}
+
+.tele-val small {
+  font-size: 10px;
+  color: var(--text-secondary);
 }
