@@ -72,6 +72,14 @@ const VesselHelm3D = ({
   // Refs for 60FPS loop access
   const keysRef = useRef({ w: false, s: false, a: false, d: false, space: false });
   const jettisonTriggerRef = useRef(false);
+  const camOrbitRef = useRef({
+    isRightDown: false,
+    lastX: 0,
+    lastY: 0,
+    yawOffset: 0,
+    pitchOffset: 0,
+    zoomDist: 30
+  });
 
   const simRef = useRef({
     speed: 20,
@@ -541,6 +549,36 @@ const VesselHelm3D = ({
       if (e.code === 'Space' || e.key === ' ') keysRef.current.space = false;
     };
 
+    const onContextMenu = (e) => e.preventDefault();
+    const onMouseDown = (e) => {
+      if (e.button === 2) {
+        camOrbitRef.current.isRightDown = true;
+        camOrbitRef.current.lastX = e.clientX;
+        camOrbitRef.current.lastY = e.clientY;
+      }
+    };
+    const onMouseMove = (e) => {
+      if (!camOrbitRef.current.isRightDown) return;
+      const dx = e.clientX - camOrbitRef.current.lastX;
+      const dy = e.clientY - camOrbitRef.current.lastY;
+      camOrbitRef.current.lastX = e.clientX;
+      camOrbitRef.current.lastY = e.clientY;
+      camOrbitRef.current.yawOffset -= dx * 0.007;
+      camOrbitRef.current.pitchOffset = Math.max(-6, Math.min(22, camOrbitRef.current.pitchOffset + dy * 0.08));
+    };
+    const onMouseUp = (e) => {
+      if (e.button === 2) camOrbitRef.current.isRightDown = false;
+    };
+    const onWheel = (e) => {
+      camOrbitRef.current.zoomDist = Math.max(16, Math.min(55, camOrbitRef.current.zoomDist + e.deltaY * 0.025));
+    };
+
+    container.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    container.addEventListener('wheel', onWheel, { passive: true });
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
@@ -871,16 +909,18 @@ const VesselHelm3D = ({
       }
 
       // ==========================================
-      // 7. OVER-THE-SHOULDER CHASE CAMERA + IMPACT SHAKE
+      // 7. OVER-THE-SHOULDER + RIGHT-CLICK ORBIT CAMERA
       // ==========================================
-      const camDistance = 30;
-      const camHeight = 14.5;
-      const targetCamX = playerGroup.position.x + Math.sin(s.heading) * camDistance;
-      const targetCamZ = playerGroup.position.z + Math.cos(s.heading) * camDistance;
+      const orb = camOrbitRef.current;
+      const totalCamAngle = s.heading + orb.yawOffset;
+      const camDistance = orb.zoomDist;
+      const camHeight = Math.max(3.0, 14.5 + orb.pitchOffset);
+      const targetCamX = playerGroup.position.x + Math.sin(totalCamAngle) * camDistance;
+      const targetCamZ = playerGroup.position.z + Math.cos(totalCamAngle) * camDistance;
 
-      camera.position.x += (targetCamX - camera.position.x) * 8 * rawDt;
-      camera.position.z += (targetCamZ - camera.position.z) * 8 * rawDt;
-      camera.position.y += (camHeight - camera.position.y) * 6 * rawDt;
+      camera.position.x += (targetCamX - camera.position.x) * 10 * rawDt;
+      camera.position.z += (targetCamZ - camera.position.z) * 10 * rawDt;
+      camera.position.y += (camHeight - camera.position.y) * 8 * rawDt;
 
       if (s.cameraShake > 0) {
         camera.position.x += (Math.random() - 0.5) * s.cameraShake * 2.2;
@@ -888,11 +928,7 @@ const VesselHelm3D = ({
         s.cameraShake = Math.max(0, s.cameraShake - 3.5 * rawDt);
       }
 
-      camera.lookAt(
-        playerGroup.position.x - Math.sin(s.heading) * 16,
-        2.0,
-        playerGroup.position.z - Math.cos(s.heading) * 16
-      );
+      camera.lookAt(playerGroup.position.x, 3.0, playerGroup.position.z);
 
       // Update React HUD at 10Hz
       hudTimer += rawDt;
@@ -926,6 +962,11 @@ const VesselHelm3D = ({
 
     return () => {
       cancelAnimationFrame(animId);
+      container.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      container.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('resize', onResize);

@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import './Simulation.css';
 import AssessmentModal from './AssessmentModal';
 import VesselHelm3D from './VesselHelm3D'; // 🔥 NEW: 3D Boat Physics Simulator
+import TruckHaul3D from './TruckHaul3D'; // 🔥 NEW: 3D Inland Truck Simulator
 import WeatherHUD from './WeatherHUD'; // 🔥 Add this line
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import TopHUD from './TopHUD';
@@ -179,6 +180,7 @@ const Simulation = () => {
   const [weatherSyncTrigger, setWeatherSyncTrigger] = useState(0); // 🔥 NEW: Triggers HUD update
   const [relaunchEvent, setRelaunchEvent] = useState(null); // 🔥 THE FIX: Added Relaunch State!
   const [assessmentConfig, setAssessmentConfig] = useState(null);
+  const [truckSimEvent, setTruckSimEvent] = useState(null); // 🔥 Tracks active 3D Truck Haul
   const [useLegacyQuiz, setUseLegacyQuiz] = useState(false); // 🔥 Keeps quiz hidden unless toggled!  
   const [ticketForm, setTicketForm] = useState({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global' });
   const [selectedTrackingId, setSelectedTrackingId] = useState(null);
@@ -296,16 +298,24 @@ const Simulation = () => {
     });
   };
 
-  // 🔥 UNIVERSAL 3D HELM LAUNCHER
+  // 🔥 UNIVERSAL 3D LAUNCHER (Truck on Land 0-20%, Vessel at Sea 20%+)
   const launchManual3DHelm = (shipObj, currentHealthVal) => {
     if (!shipObj) return;
     changeShipSpeed(shipObj.id, 0);
-    setUseLegacyQuiz(false);
-    setAssessmentConfig({
-      event: shipObj,
-      type: 'PUSH',
-      health: parseFloat(currentHealthVal) || 100
-    });
+    const nav = calculateNavigation(shipObj);
+    if (nav.phase.type === 'truck') {
+      setTruckSimEvent({
+        event: shipObj,
+        health: parseFloat(currentHealthVal) || 100
+      });
+    } else {
+      setUseLegacyQuiz(false);
+      setAssessmentConfig({
+        event: shipObj,
+        type: 'PUSH',
+        health: parseFloat(currentHealthVal) || 100
+      });
+    }
   };
 
   // 🔥 THE CINEMATIC WARP SEQUENCE
@@ -798,6 +808,50 @@ const Simulation = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 🚛 3D INLAND TRUCK SIMULATOR (Warehouse -> Port Terminal) */}
+      {truckSimEvent && (
+        <TruckHaul3D
+          weatherState={globalWeather}
+          cargo={truckSimEvent.event.cargo}
+          weightKg={truckSimEvent.event.weightKg || Number(ticketForm.weight) || 2500}
+          originHub={
+            truckSimEvent.event.category && truckSimEvent.event.category.includes('Perishable')
+              ? 'Central Cold Storage'
+              : 'Panabo North Facility'
+          }
+          initialHealth={truckSimEvent.health}
+          onExit={() => {
+            changeShipSpeed(truckSimEvent.event.id, 1);
+            setTruckSimEvent(null);
+          }}
+          onComplete={(result) => {
+            const activeShip = truckSimEvent.event;
+            setTruckSimEvent(null);
+
+            if (result.success) {
+              // 1. Advance shipment progress to 21% (Ocean Transit Phase)
+              const targetElapsed = activeShip.duration * 0.21;
+              const newOffset = targetElapsed - (Date.now() - activeShip.startTime);
+              localStorage.setItem(`offset_${activeShip.id}`, newOffset.toString());
+
+              // 2. Update local state & AUTOMATICALLY launch 3D Sea Vessel Simulator!
+              const updatedShip = { ...activeShip, timeOffset: newOffset, cargoHealth: result.finalHealth };
+              setActiveExports(prev => prev.map(s => s.id === activeShip.id ? updatedShip : s));
+
+              setUseLegacyQuiz(false);
+              setAssessmentConfig({
+                event: updatedShip,
+                type: 'PUSH',
+                health: result.finalHealth
+              });
+            } else {
+              // If the truck crashed or ran out of time, process the fail state on the backend
+              processAssessmentResult(activeShip, 'PUSH', result);
+            }
+          }}
+        />
       )}
 
       {/* 🧠 3D HELM SIMULATOR (With Non-Destructive Toggle to Legacy Quiz) */}
