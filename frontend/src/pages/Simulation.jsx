@@ -28,6 +28,28 @@ const DESTINATION_PRICING = {
   "Jakarta, Indonesia": 19000, "Muara, Brunei": 11000, "Yangon, Myanmar": 17000, "Dili, Timor-Leste": 6000
 };
 
+// Coordinate lookup for Interactive Route Hover Previews
+const DESTINATION_COORDINATES = {
+  "Panabo Wharf": [7.300, 125.650],
+  "Davao City Port": [7.284, 125.681],
+  "Manila, Philippines": [14.599, 120.984],
+  "Cebu Port": [10.292, 123.901],
+  "Batangas Terminal": [13.756, 121.058],
+  "Singapore": [1.290, 103.850],
+  "Ho Chi Minh, Vietnam": [10.823, 106.629],
+  "Bangkok, Thailand": [13.756, 100.501],
+  "Jakarta, Indonesia": [-6.208, 106.845],
+  "Muara, Brunei": [5.027, 115.064],
+  "Yangon, Myanmar": [16.840, 96.145],
+  "Dili, Timor-Leste": [-8.558, 125.573]
+};
+
+const getPortTier = (portName) => {
+  if (PORT_DATABASE.Local.includes(portName)) return 'Local';
+  if (PORT_DATABASE.National.includes(portName)) return 'National';
+  return 'Global';
+};
+
 const PANABO_HUBS = [
   { id: 1, pos: [7.300, 125.650], name: 'Panabo North Facility', type: 'WAREHOUSE', stat: 'Storage: 88%', status: 'Active' },
   { id: 2, pos: [7.285, 125.660], name: 'Central Cold Storage', type: 'CLIMATE CONTROL', stat: 'Temp: -4.2°C', status: 'Optimal' },
@@ -71,13 +93,13 @@ const createHouseIcon = () => {
 };
 
 const createTransportIcon = (type, status, angle, health) => {
-  // 🔥 FIX: Assign Green for Trucks, Blue for Sea Vessels
-  let color = type === 'truck' ? '#2ecc71' : '#3498db'; 
+  // 🔥 FIX: Assign Green for Trucks, Sky Blue (#38bdf8) for Sea Vessels
+  let color = type === 'truck' ? '#2ecc71' : '#38bdf8'; 
   
-  if (health < 70 || status === 'Failed') color = '#e74c3c'; 
+  if (health < 70 || status === 'Failed') color = '#ef4444'; 
   
   const truckSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="${color}" stroke="#111" stroke-width="1"><path d="M12 2L22 20L12 17L2 20L12 2Z"/></svg>`;
-  const vesselSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><path d="M4 22L12 2L20 22L12 16L4 22Z" fill="rgba(52, 152, 219, 0.2)"/></svg>`;
+  const vesselSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><path d="M4 22L12 2L20 22L12 16L4 22Z" fill="rgba(56, 189, 248, 0.2)"/></svg>`;
 
   return L.divIcon({
     className: 'sim-vessel-icon',
@@ -139,22 +161,30 @@ const CustomSimControls = ({ isLightMode, setIsLightMode }) => {
   );
 };
 
-const MapEventsTracker = ({ setZoomLevel, setIsAutoFollow, isAutoFollow }) => {
+// Deliverable 5: Contextual Auto-Follow Feedback in MapEventsTracker
+const MapEventsTracker = ({ setZoomLevel, setIsAutoFollow, isAutoFollow, setManualPanToast }) => {
   const map = useMapEvents({
     zoomend: () => setZoomLevel(map.getZoom()),
-    // 🔥 FIX 1: Turn off Auto-Follow immediately if the user clicks and drags the map!
     dragstart: () => {
-      if (isAutoFollow) setIsAutoFollow(false);
+      if (isAutoFollow) {
+        setIsAutoFollow(false);
+        setManualPanToast(true);
+      }
     }
   });
   return null;
 };
 
+// Deliverable 6: Smooth Warp & FlyTo Camera Transitions
 const MapFlyToHandler = ({ target }) => {
   const map = useMap();
   useEffect(() => {
-    if (target) {
-      map.flyTo(target.pos, 16, { animate: true, duration: 1.5 });
+    if (target && target.pos) {
+      map.flyTo(target.pos, target.zoom || 16, {
+        animate: true,
+        duration: target.duration || 1.5,
+        easeLinearity: 0.25
+      });
     }
   }, [target, map]);
   return null;
@@ -173,7 +203,6 @@ const Simulation = () => {
   const [isLightMode, setIsLightMode] = useState(false); 
   const [zoomLevel, setZoomLevel] = useState(14); 
   const [notification, setNotification] = useState(null);
-  const [showFloatingIncome, setShowFloatingIncome] = useState(false);
   const [chaosEvent, setChaosEvent] = useState(null); 
   const [chaosTimer, setChaosTimer] = useState(15); 
   const [globalWeather, setGlobalWeather] = useState('NOMINAL');
@@ -187,8 +216,38 @@ const Simulation = () => {
   const [flyTarget, setFlyTarget] = useState(null);
   const [isAutoFollow, setIsAutoFollow] = useState(false); // 🔥 AUTO Camera State
   const [fleetFilter, setFleetFilter] = useState('ALL'); // 🔥 FIX: The missing filter state!
-
   const [showBoosters, setShowBoosters] = useState(false);
+
+  // Deliverable 1, 2, 5, 6 New States
+  const [isComboboxOpen, setIsComboboxOpen] = useState(false);
+  const [destinationSearch, setDestinationSearch] = useState('');
+  const [previewRoute, setPreviewRoute] = useState(null);
+  const [manualPanToast, setManualPanToast] = useState(false);
+  const [isWarpFlying, setIsWarpFlying] = useState(false);
+  const comboboxRef = useRef(null);
+
+  // Close combobox when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (comboboxRef.current && !comboboxRef.current.contains(e.target)) {
+        setIsComboboxOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Clear preview polyline when switching panels
+  useEffect(() => {
+    setPreviewRoute(null);
+  }, [activePanel]);
+
+  // Clear manual pan toast automatically if auto-follow is re-engaged
+  useEffect(() => {
+    if (isAutoFollow) {
+      setManualPanToast(false);
+    }
+  }, [isAutoFollow]);
 
   // 🔥 MOCK FUNCTION: Strictly UI for the presentation demo!
   const handleMockPurchase = (itemName) => {
@@ -208,12 +267,13 @@ const Simulation = () => {
   };
 
   // 🔥 AUTO FOLLOW COMPONENT (Dynamic Zoom & Warp Safety)
-  const AutoFollowCamera = ({ targetPos, isAutoFollow, transportType, currentSpeed }) => {
+  const AutoFollowCamera = ({ targetPos, isAutoFollow, transportType, currentSpeed, isWarpFlying }) => {
     const map = useMap();
 
     useEffect(() => {
-      if (isAutoFollow && targetPos) {
-        // Truck = Zoom 15, Sea Vessel = Zoom 7 (Wider view)
+      // Hold off immediate setView snapping while smooth flyTo warp lock-on is in progress
+      if (isAutoFollow && targetPos && !isWarpFlying) {
+        // Truck = Zoom 15, Sea Vessel = Zoom 10
         const targetZoom = transportType === 'truck' ? 15 : 10;
         
         // 🔥 CRITICAL FIX: If speed is > 1 (Warping), disable smooth animation 
@@ -225,7 +285,7 @@ const Simulation = () => {
           duration: isWarping ? 0 : 0.5 
         });
       }
-    }, [targetPos, isAutoFollow, map, transportType, currentSpeed]);
+    }, [targetPos, isAutoFollow, map, transportType, currentSpeed, isWarpFlying]);
     
     return null;
   };
@@ -318,24 +378,33 @@ const Simulation = () => {
     }
   };
 
-  // 🔥 THE CINEMATIC WARP SEQUENCE
+  // Deliverable 6: Smooth Warp Camera Transitions using map.flyTo()
   const triggerWarpSequence = (shipId, newSpeed) => {
-    // If it's just normal play/pause, do it instantly without moving the camera
     if (newSpeed === 1 || newSpeed === 0) {
       changeShipSpeed(shipId, newSpeed);
       return;
     }
 
-    // 1. Lock the camera to the specific ship
+    const targetShip = activeExports.find(s => s.id === shipId);
+    const nav = targetShip ? calculateNavigation(targetShip) : null;
+    const targetZoom = nav?.phase?.type === 'truck' ? 15 : 10;
+
+    // 1. Lock target & pause vessel while camera glides smoothly via flyTo
     setSelectedTrackingId(shipId);
+    setManualPanToast(false);
+    setIsWarpFlying(true);
     setIsAutoFollow(true);
-    
-    // 2. Pause the ship temporarily to let the camera catch up
     changeShipSpeed(shipId, 0);
+
+    if (nav?.pos) {
+      setFlyTarget({ pos: nav.pos, zoom: targetZoom, duration: 1.4, timestamp: Date.now() });
+    }
+
     addTerminalLog(`> SEQUENCE: Locking camera to ${shipId}...`, 'warning');
 
-    // 3. Wait 1.5 seconds for the map to pan, then engage the warp drive!
+    // 2. Engage warp speed after smooth flyTo completes
     setTimeout(() => {
+      setIsWarpFlying(false);
       changeShipSpeed(shipId, newSpeed);
       addTerminalLog(`> WARP ENGAGED: Vessel entering slipspace.`, 'highlight');
     }, 1500);
@@ -351,6 +420,25 @@ const Simulation = () => {
     if (ticketForm.scale === 'National') options = PORT_DATABASE.National;
     
     return options.filter(port => !activeDestinations.includes(port));
+  };
+
+  // Deliverable 2: Route Hover Preview Handler
+  const handlePreviewHover = (destCoords) => {
+    if (!destCoords) {
+      setPreviewRoute(null);
+      return;
+    }
+    const originHubPos = ticketForm.type && ticketForm.type.includes('Perishable')
+      ? PANABO_HUBS[1].pos
+      : PANABO_HUBS[0].pos;
+    
+    // If destination is Panabo Wharf or Davao Port, draw direct segment, else route through Davao Port
+    const isSameAsPort = Math.abs(destCoords[0] - portPosition[0]) < 0.02 && Math.abs(destCoords[1] - portPosition[1]) < 0.02;
+    if (isSameAsPort) {
+      setPreviewRoute([originHubPos, destCoords]);
+    } else {
+      setPreviewRoute([originHubPos, portPosition, destCoords]);
+    }
   };
 
   const formatShopeeTime = (ms, type) => {
@@ -372,9 +460,6 @@ const Simulation = () => {
     const waypoints = ship.waypoints || [];
     const totalSegments = Math.max(waypoints.length - 1, 1);
     
-    // 🔥 THE FIX: Removed "isHalted ? 0 :"
-    // When the ship is Sheltered, currentSpeed is 0, which perfectly freezes 
-    // the timeOffset and holds the ship exactly at its current coordinate!
     let progress = Math.min(elapsed / ship.duration, 1);
     
     if (ship.status === 'Arrived' || progress >= 1 || waypoints.length < 2) {
@@ -388,56 +473,23 @@ const Simulation = () => {
     
     const currentPos = [waypoints[idx][0] + (waypoints[nextIdx][0] - waypoints[idx][0]) * lerp, waypoints[idx][1] + (waypoints[nextIdx][1] - waypoints[idx][1]) * lerp];    
     
-    // 🔥 SPATIAL PHASE LOGIC: Find exactly where Davao Port is in the route array
-    // Davao Port coordinates from pathfinder: (7.284, 125.681)
     const davaoIdx = waypoints.findIndex(wp => Math.abs(wp[0] - 7.284) < 0.01 && Math.abs(wp[1] - 125.681) < 0.01);
     const portThreshold = davaoIdx > -1 ? davaoIdx : 1;
 
-    // If our current waypoint index is BEFORE the Davao Port node, we are a truck on land.
-    // Otherwise, we are a vessel on the ocean.
     let currentPhase = { type: 'vessel', label: 'Ocean Transit (Vessel)', step: 2 };
     
-    // Use the 20% mark to determine if we are still at the origin hub
     if (progress < 0.20) {
       currentPhase = { type: 'truck', label: 'Origin Hub (Truck)', step: 1 };
     }
 
-    // 🔥 ELITE KNOWLEDGE: Trust the authoritative health from the database!
     let currentHealth = ship.cargoHealth !== undefined ? ship.cargoHealth : 100;
-    
-    // Ensure health stays securely between 0 and 100 for the UI
     currentHealth = Math.max(0, Math.min(100, currentHealth)).toFixed(1);
 
     return { 
       pos: currentPos, 
       angle: getBearing(currentPos[0], currentPos[1], waypoints[nextIdx][0], waypoints[nextIdx][1]),
       phase: currentPhase,
-      health: currentHealth // Injects the true DB health value into the UI
-    };
-    
-    // Fail-safe: Check the explicit category OR infer from the cargo name
-    const isPerishable = 
-      (ship.category && ship.category.includes('Perishable')) || 
-      (ship.cargo && (ship.cargo.toLowerCase().includes('banana') || ship.cargo.toLowerCase().includes('food') || ship.cargo.toLowerCase().includes('fruit') || ship.cargo.toLowerCase().includes('meat') || ship.cargo.toLowerCase().includes('fish')));
-
-    if (isPerishable) {
-      // Food rots over time. If they took a +2 Day delay (shelterCount), it drops massively.
-      currentHealth = 100 - (progress * 25) - (ship.shelterCount * 30);
-    } else {
-      // Electronics/Raw Materials. If they PUSHED through a storm (eventHandled but no shelter), they take impact damage!
-      if (ship.eventHandled && ship.shelterCount === 0) {
-        currentHealth = 65; 
-      }
-    }
-    
-    // Ensure health stays between 0 and 100
-    currentHealth = Math.max(0, Math.min(100, currentHealth)).toFixed(1);
-
-    return { 
-      pos: currentPos, 
-      angle: getBearing(currentPos[0], currentPos[1], waypoints[nextIdx][0], waypoints[nextIdx][1]),
-      phase: currentPhase,
-      health: currentHealth // Inject the new health value
+      health: currentHealth
     };
   };
 
@@ -472,7 +524,7 @@ const Simulation = () => {
             eventHandled: s.storm_event_handled,
             shelterCount: s.shelter_count,
             stormTime: s.storm_time ? new Date(s.storm_time).getTime() : null,
-            cargoHealth: s.cargo_health, // 🔥 THE FIX: Store the true DB health locally
+            cargoHealth: s.cargo_health,
             lastSegment: 0,
             timeOffset: Number(localStorage.getItem(`offset_${shipId}`)) || 0, 
             currentSpeed: Number(localStorage.getItem(`speed_${shipId}`)) || 1
@@ -488,41 +540,25 @@ const Simulation = () => {
   // --- ENGINES ---
   useEffect(() => {
     const tickRateMs = 1000;
-    let tickCounter = 0;
-    
     const interval = setInterval(() => {
-      // 🔥 FIX 1: If a Chaos Modal or Relaunch Modal is open, skip the tick entirely.
-      // This perfectly freezes the background, the UI progress bars, and the map animation.
       setChaosEvent(currentChaos => {
         setRelaunchEvent(currentRelaunch => {
           if (currentChaos || currentRelaunch) {
-             return currentRelaunch; // Do nothing, keep frozen
+             return currentRelaunch;
           }
 
           setSimTime(Date.now()); 
 
           setActiveExports(currentExports => {
-            let hasActiveShip = false;
             
             const updatedExports = currentExports.map(exp => {
               if (exp.status === 'Outbound') {
-                if (exp.commander === userId) hasActiveShip = true;
                 const newOffset = (exp.timeOffset || 0) + (tickRateMs * (exp.currentSpeed || 1)) - tickRateMs;
                 localStorage.setItem(`offset_${exp.id}`, newOffset.toString());
                 return { ...exp, timeOffset: newOffset };
               }
               return exp;
             });
-
-            if (hasActiveShip) {
-              tickCounter++;
-              if (tickCounter >= 10) {
-                setResources(prevRes => ({ ...prevRes, money: prevRes.money + 50 }));
-                tickCounter = 0;
-                setShowFloatingIncome(true);
-                setTimeout(() => setShowFloatingIncome(false), 900);
-              }
-            }
             return updatedExports;
           });
 
@@ -533,24 +569,19 @@ const Simulation = () => {
     }, tickRateMs);
     
     return () => clearInterval(interval);
-  }, [userId]); // 🔥 Make sure userId is the only dependency here
+  }, [userId]);
 
   useEffect(() => {
     activeExports.forEach(ship => {
       const shipPersonalTime = Date.now() + (ship.timeOffset || 0);
       
       if (ship.stormTime && shipPersonalTime >= ship.stormTime && !ship.eventHandled && ship.status === 'Outbound') {
-        
-        // 🔥 THE INTERLOCK: Check if the cargo is currently on a truck
         const nav = calculateNavigation(ship);
         if (nav.phase.type === 'truck') {
-          // Defer the storm by pushing its trigger time forward by 3 seconds.
-          // The storm is essentially "waiting" in the ocean for the vessel to launch.
           setActiveExports(prev => prev.map(s => s.id === ship.id ? { ...s, stormTime: shipPersonalTime + 3000 } : s));
           return; 
         }
 
-        // If it's a vessel in the ocean, trigger the Chaos Engine!
         changeShipSpeed(ship.id, 0); 
         setChaosEvent(ship); 
         addTerminalLog(`> MAYDAY: Severe weather anomaly detected at ${ship.id}.`, 'danger');
@@ -562,7 +593,6 @@ const Simulation = () => {
 
   useEffect(() => {
     let interval;
-    // 🔥 THE FIX: Stop the 15-second countdown if the Assessment Modal is active
     if (chaosEvent && chaosTimer > 0 && !assessmentConfig) {
       interval = setInterval(() => { setChaosTimer(prev => prev - 1); }, 1000);
     } else if (chaosEvent && chaosTimer === 0 && !assessmentConfig) {
@@ -622,14 +652,17 @@ const Simulation = () => {
 
   const handleLaunchRoute = async (e) => {
     e.preventDefault();
-    const cost = DESTINATION_PRICING[ticketForm.destination] || 0;
+    if (!ticketForm.destination) {
+      setNotification({ title: 'Missing Destination', message: 'Please select a valid destination market from the list.', type: 'error' });
+      return;
+    }
 
     const payload = {
       cargo_name: ticketForm.cargo,
       weight_kg: Number(ticketForm.weight) || 5000, 
       destination_country: ticketForm.destination,
       scale: ticketForm.scale, 
-      category: ticketForm.type, // 🔥 ADD THIS: Send the category to the backend!
+      category: ticketForm.type,
       username: userId,
       departure_time: new Date(simTime).toISOString()
     };
@@ -644,12 +677,13 @@ const Simulation = () => {
       if (res.ok) {
         await fetchGameState(); 
         addTerminalLog(`> OUTBOUND: ${ticketForm.cargo} dispatched to ${ticketForm.destination}.`, 'highlight');
-        setTicketForm({ cargo: '', weight: '', destination: '', type: 'Perishable (Food)', scale: 'Global' });
+        setTicketForm({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global' });
+        setDestinationSearch('');
+        setPreviewRoute(null);
         setActivePanel('tracking'); 
         
         const newShipsRes = await fetch(`${API_BASE}/admin/ticketing/active?username=${userId}`);
-        const newShips = await newShipsRes.json();
-        //if(newShips.length > 0) setSelectedTrackingId(`TRK-${newShips[newShips.length - 1].id}`);
+        await newShipsRes.json();
       } else {
         const errorData = await res.json();
         setNotification({ title: 'Launch Failed', message: `Server says: ${errorData.detail || "Unknown Error"}`, type: 'error' });
@@ -661,15 +695,12 @@ const Simulation = () => {
 
   const handleChaosChoice = (choice) => {
     if (!chaosEvent) return;
-
-    // 🔥 Feature C & E: Launch Assessment instead of immediate result
-    // Extract current health from tracked data, fallback to 100
     const nav = calculateNavigation(chaosEvent);
     const startingHealth = parseFloat(nav.health) || 100;
     
     setAssessmentConfig({
       event: chaosEvent,
-      type: choice, // 'PUSH' or 'RETREAT'
+      type: choice,
       health: startingHealth
     });
   };
@@ -685,14 +716,12 @@ const Simulation = () => {
         type: choice,
         health: startingHealth
       });
-      return; // Stop here, modal will handle the rest
+      return;
     }
     
-    // WAIT IT OUT has no questions, just a direct API call (keep existing code for WAIT here, but add explicit health penalty param)
     processAssessmentResult(relaunchEvent, choice, { success: true, finalHealth: Math.max(0, (parseFloat(calculateNavigation(relaunchEvent).health) || 100) - 15) });
   };
 
-  // 🔥 NEW: Fires when the user finishes the questionnaire
   const processAssessmentResult = async (activeEvent, choice, result) => {
     setAssessmentConfig(null);
     if (choice === 'PUSH' || choice === 'RETREAT') setChaosEvent(null);
@@ -702,10 +731,8 @@ const Simulation = () => {
     const progress = Math.min((shipPersonalTime - activeEvent.startTime) / activeEvent.duration, 1);
     const currentIdx = Math.floor(progress * ((activeEvent.waypoints?.length || 2) - 1));
 
-    // Calculate how much health was lost during the quiz
     const nav = calculateNavigation(activeEvent);
     const startingHealth = parseFloat(nav.health) || 100;
-    // 🔥 THE FIX: Round the penalty so the notification shows a clean integer!
     const healthPenalty = Math.round(startingHealth - result.finalHealth);
 
     try {
@@ -717,15 +744,14 @@ const Simulation = () => {
           username: userId, 
           choice: choice, 
           current_index: currentIdx,
-          is_success: result.success,       // Did they pass the threshold?
-          health_penalty: healthPenalty     // Send exact % damage to DB
+          is_success: result.success,
+          health_penalty: healthPenalty
         }) 
       });
       
       if (res.ok) {
         const data = await res.json();
         
-        // Sync time offset to prevent map jitter
         const penaltyMs = choice === 'WAIT' ? 172800000 : (choice === 'REROUTE' ? 86400000 : 0);
         const newDuration = activeEvent.duration + penaltyMs;
         const requiredElapsed = progress * newDuration;
@@ -738,7 +764,6 @@ const Simulation = () => {
           changeShipSpeed(activeEvent.id, 1); 
         }
         
-        // Custom Notifications based on result
         if (data.status === 'Failed') {
           setNotification({ title: "CONTRACT TERMINATED", message: "Vessel lost at sea. Cargo unrecoverable.", type: "error" });
         } else if (choice === 'RETREAT') {
@@ -758,6 +783,7 @@ const Simulation = () => {
   const baseRouteCost = DESTINATION_PRICING[ticketForm.destination] || 0;
   const weightMultiplier = (Number(ticketForm.weight) || 1500) / 1000;
   const currentRouteCost = baseRouteCost * weightMultiplier;
+
   // 🔥 PRIVACY FILTER: Only calculate fleet capacity based on YOUR ships
   const myShips = activeExports.filter(ship => ship.commander === userId);
   const activeShipCount = myShips.filter(exp => exp.status !== 'Arrived' && exp.status !== 'Failed').length;
@@ -765,21 +791,53 @@ const Simulation = () => {
 
   const trackedShip = activeExports.find(s => s.id === selectedTrackingId) || myShips.find(s => s.status === 'Outbound') || activeExports[activeExports.length - 1];
   let trackedNav = null;
-  let progress = 0; // 🔥 NEW: Track precise 0.0 to 1.0 progress
+  let progress = 0;
   if (trackedShip) {
     trackedNav = calculateNavigation(trackedShip);
     progress = Math.min(((Date.now() + (trackedShip.timeOffset || 0)) - trackedShip.startTime) / trackedShip.duration, 1);
   }
 
+  // Filtered options for Custom Destination Combobox
+  const filteredDestinations = getOptions().filter(port =>
+    port.toLowerCase().includes(destinationSearch.toLowerCase())
+  );
+
   // --- RENDER ---
   return (
-    /* 🔥 Added dynamic storm-alert class to the wrapper */
     <div className={`sim-wrapper ${isLightMode ? 'light-mode' : ''} ${chaosEvent ? 'storm-alert' : ''}`}>
       
       {/* 🔥 The subtle radar hex-grid over the map */}
       <div className="radar-grid-overlay"></div>
 
       <div className="climate-overlay"></div>
+
+      {/* Deliverable 5: Contextual Auto-Follow Feedback Toast */}
+      {manualPanToast && !isAutoFollow && (
+        <div className="manual-pan-toast">
+          <span className="toast-status-dot"></span>
+          <span className="toast-text">
+            Manual Pan Engaged — Click Target Card or <strong>[Re-Center]</strong> to Resume Tracking
+          </span>
+          <button
+            type="button"
+            className="btn-recenter-toast"
+            onClick={() => {
+              setIsAutoFollow(true);
+              setManualPanToast(false);
+            }}
+          >
+            Re-Center
+          </button>
+          <button
+            type="button"
+            className="btn-dismiss-toast"
+            onClick={() => setManualPanToast(false)}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* 🔥 Hide Exit Button when AUTO is ON to prevent breaking the simulation */}
       {!isAutoFollow && (
@@ -791,7 +849,7 @@ const Simulation = () => {
       {/* 🔥 MACRO-CLIMATE WEATHER HUD & REPUTATION */}
       {!isAutoFollow && (
         <>
-          <div style={{ position: 'absolute', bottom: '105px', left: '25px', background: 'rgba(5, 7, 10, 0.85)', padding: '10px 15px', borderRadius: '10px', border: '1px solid var(--border-color)', color: '#fff', fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 'bold', zIndex: 2000, backdropFilter: 'blur(12px)' }}>
+          <div className="reputation-hud-pill">
             REP: <span style={{ color: 'var(--accent-blue)' }}>{resources.reputation}</span>
           </div>
           <WeatherHUD onWeatherUpdate={setGlobalWeather} syncTrigger={weatherSyncTrigger} />
@@ -831,12 +889,10 @@ const Simulation = () => {
             setTruckSimEvent(null);
 
             if (result.success) {
-              // 1. Advance shipment progress to 21% (Ocean Transit Phase)
               const targetElapsed = activeShip.duration * 0.21;
               const newOffset = targetElapsed - (Date.now() - activeShip.startTime);
               localStorage.setItem(`offset_${activeShip.id}`, newOffset.toString());
 
-              // 2. Update local state & AUTOMATICALLY launch 3D Sea Vessel Simulator!
               const updatedShip = { ...activeShip, timeOffset: newOffset, cargoHealth: result.finalHealth };
               setActiveExports(prev => prev.map(s => s.id === activeShip.id ? updatedShip : s));
 
@@ -847,7 +903,6 @@ const Simulation = () => {
                 health: result.finalHealth
               });
             } else {
-              // If the truck crashed or ran out of time, process the fail state on the backend
               processAssessmentResult(activeShip, 'PUSH', result);
             }
           }}
@@ -883,13 +938,13 @@ const Simulation = () => {
       {/* ⚠️ PHASE 1: INITIAL STORM DETECTED MODAL */}
       {chaosEvent && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
-          <div className="chaos-modal" style={{ borderTopColor: '#e74c3c', boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 40px rgba(231, 76, 60, 0.1)' }}>
+          <div className="chaos-modal" style={{ borderTopColor: '#ef4444', boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 40px rgba(239, 68, 68, 0.15)' }}>
             <div className="modal-shake-chaos">
-              <h1 className="warning-title" style={{ color: '#ff4757' }}>⚠️ MAYDAY: STORM DETECTED</h1>
+              <h1 className="warning-title" style={{ color: '#ef4444' }}>⚠️ MAYDAY: STORM DETECTED</h1>
               <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '14px' }}>Logistics order <strong style={{color: '#fff'}}>{chaosEvent.cargo}</strong> hit a severe storm.</p>
               
-              <div style={{ background: 'rgba(231, 76, 60, 0.1)', border: '1px solid rgba(231, 76, 60, 0.3)', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '10px' }}>
-                <h3 style={{ color: '#ff4757', margin: 0, animation: 'pulseGlow 1s infinite', fontSize: '16px', letterSpacing: '2px', fontFamily: 'var(--font-mono)' }}>
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '10px' }}>
+                <h3 style={{ color: '#ef4444', margin: 0, animation: 'pulseGlow 1s infinite', fontSize: '16px', letterSpacing: '2px', fontFamily: 'var(--font-mono)' }}>
                   AUTO-PUSH IN: {chaosTimer}s
                 </h3>
               </div>
@@ -899,7 +954,6 @@ const Simulation = () => {
                   PUSH THROUGH <span className="btn-subtext">Roll the dice (80% Risk)</span>
                 </button>
                 
-                {/* 🔥 UPDATED: Tactical Retreat Button */}
                 <button className="btn-push warning-btn" onClick={() => handleChaosChoice('RETREAT')} style={{ flex: 1 }}>
                   TACTICAL RETREAT <span className="btn-subtext">Fall back to Safe Node (Freezes)</span>
                 </button>
@@ -912,8 +966,8 @@ const Simulation = () => {
       {/* 🧭 PHASE 2: THE TACTICAL RELAUNCH MODAL */}
       {relaunchEvent && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
-          <div className="chaos-modal" style={{ borderTopColor: '#3498db', boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 40px rgba(52, 152, 219, 0.15)' }}>
-            <h1 className="warning-title" style={{ color: '#3498db' }}>TACTICAL RELAUNCH</h1>
+          <div className="chaos-modal" style={{ borderTopColor: '#38bdf8', boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 40px rgba(56, 189, 248, 0.15)' }}>
+            <h1 className="warning-title" style={{ color: '#38bdf8' }}>TACTICAL RELAUNCH</h1>
             <p style={{ color: '#94a3b8', marginBottom: '30px', fontSize: '14px' }}>Vessel <strong style={{color: '#fff'}}>{relaunchEvent.cargo}</strong> is holding position.</p>
             
             <div className="chaos-actions">
@@ -932,10 +986,6 @@ const Simulation = () => {
           </div>
         </div>
       )}
-
-      <div style={{position: 'absolute', top: '90px', left: '45%', transform: 'translateX(-50%)', zIndex: 3001}}>
-         {showFloatingIncome && <div className="floating-income-text" style={{ color: 'var(--accent-blue)' }}>+$50</div>}
-      </div>
       
       {notification && (
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
@@ -950,371 +1000,476 @@ const Simulation = () => {
         </div>
       )}
 
-      {/* 📍 MASTER TRACKING PANEL (List & Detail View) */}
-      {activePanel === 'tracking' && (
-        <div className="floating-side-panel" style={{ width: '380px' }}>
-          
-          {/* THE LIST VIEW */}
-          {!selectedTrackingId ? (
-            <>
-              <div className="panel-header">
-                <h3>Live Fleet Tracking</h3>
-                <span className="badge docked">{activeShipCount} Active</span>
-              </div>
-              
-              {/* 🔥 NEW: Fleet Filter Pills */}
-              <div className="status-filters" style={{ margin: '10px 0', display: 'flex', gap: '8px' }}>
-                <button className={`filter-pill ${fleetFilter === 'ALL' ? 'active' : ''}`} onClick={() => setFleetFilter('ALL')}>ALL</button>
-                <button className={`filter-pill ${fleetFilter === 'OUTBOUND' ? 'active' : ''}`} onClick={() => setFleetFilter('OUTBOUND')}>OUTBOUND</button>
-                <button className={`filter-pill ${fleetFilter === 'ARRIVED' ? 'active' : ''}`} onClick={() => setFleetFilter('ARRIVED')}>ARRIVED</button>
-                <button className={`filter-pill ${fleetFilter === 'FAILED' ? 'active' : ''}`} onClick={() => setFleetFilter('FAILED')}>EXCEPTIONS</button>
-              </div>
-              
-              <div className="traffic-list" style={{ marginTop: '10px' }}>
-                {myShips.length === 0 ? (
-                  <p style={{ textAlign: 'center', color: '#666', marginTop: '20px' }}>No active logistics orders.</p>
-                ) : (
-                  // 🔥 FIX: Filter by status, then Reverse the array so latest is on top
-                  [...myShips]
-                    .filter(ship => {
-                      if (fleetFilter === 'ALL') return true;
-                      if (fleetFilter === 'EXCEPTIONS') return ship.status === 'Failed' || ship.status === 'Sheltered';
-                      return ship.status.toUpperCase() === fleetFilter;
-                    })
-                    .sort((a, b) => b.rawId - a.rawId)
-                    .map(ship => (
-                    <div 
-                      className="upgrade-card" 
-                      key={ship.id} 
-                      onClick={() => setSelectedTrackingId(ship.id)}
-                      style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                    >
-                      <div>
-                        <h4 style={{ margin: '0 0 4px 0', color: '#3498db', textTransform: 'uppercase' }}>{ship.cargo}</h4>
-                        <p style={{ margin: 0, fontSize: '11px', color: '#aaa' }}>{ship.id} • {ship.destination}</p>
-                      </div>
-                      <span className={`badge ${ship.status === 'Arrived' ? 'docked' : (ship.status === 'Failed' || ship.status === 'Sheltered' ? 'failed' : 'outbound')}`}>
-                        {ship.status}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
-          ) : (
-            /* THE DETAIL VIEW (Shows the Shopee timeline for the selected ship) */
-            trackedShip && trackedNav && (
+      {/* Deliverable 4: Animated Slide-Over Drawer */}
+      <aside className={`floating-side-panel ${activePanel ? 'is-open' : ''}`}>
+        
+        {/* 📍 MASTER TRACKING PANEL (List & Detail View) */}
+        {activePanel === 'tracking' && (
+          <>
+            {!selectedTrackingId ? (
               <>
-                <div className="panel-header" style={{ borderBottom: '1px solid #333', paddingBottom: '10px', marginBottom: '15px' }}>
-                  <button 
-                    onClick={() => setSelectedTrackingId(null)} 
-                    style={{ background: 'none', border: 'none', color: 'var(--accent-blue)' , cursor: 'pointer', padding: 0, fontSize: '14px', fontWeight: 'bold' }}
-                  >
-                    ← Back to Fleet
-                  </button>
-
-                  <button 
-                    className={`btn-auto-toggle ${isAutoFollow ? 'active' : ''}`}
-                    onClick={() => setIsAutoFollow(!isAutoFollow)}
-                    disabled={trackedShip.status !== 'Outbound'}
-                    style={{ opacity: trackedShip.status !== 'Outbound' ? 0.5 : 1, cursor: trackedShip.status !== 'Outbound' ? 'not-allowed' : 'pointer' }}
-                  >
-                    {isAutoFollow ? '◉ AUTO: ON' : '○ AUTO: OFF'}
-                  </button>
+                <div className="panel-header">
+                  <h3>Live Fleet Tracking</h3>
+                  <span className="badge docked">{activeShipCount} Active</span>
                 </div>
                 
-                <div className="tracking-info-header">
-                  <h4 style={{ margin: '0 0 5px 0', textTransform: 'uppercase' }}>{trackedShip.cargo}</h4>
-                  <p className="text-muted" style={{ margin: 0 }}>{trackedShip.id} • {trackedShip.destination}</p>
-
-                  {/* 🔥 GUARANTEED PLACE 1: 3D Button inside the Right-Hand Tracking Detail Panel */}
-                  {trackedShip.status === 'Outbound' && (
-                    <button
-                      type="button"
-                      className="btn-launch-sim"
-                      style={{
-                        width: '100%',
-                        marginTop: '12px',
-                        padding: '10px',
-                        fontSize: '12px',
-                        backgroundColor: '#82a0ff',
-                        color: '#000',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        display: 'block'
-                      }}
-                      onClick={() => launchManual3DHelm(trackedShip, trackedNav.health)}
-                    >
-                      3D SIMULATION
-                    </button>
+                <div className="status-filters">
+                  <button className={`filter-pill ${fleetFilter === 'ALL' ? 'active' : ''}`} onClick={() => setFleetFilter('ALL')}>ALL</button>
+                  <button className={`filter-pill ${fleetFilter === 'OUTBOUND' ? 'active' : ''}`} onClick={() => setFleetFilter('OUTBOUND')}>OUTBOUND</button>
+                  <button className={`filter-pill ${fleetFilter === 'ARRIVED' ? 'active' : ''}`} onClick={() => setFleetFilter('ARRIVED')}>ARRIVED</button>
+                  <button className={`filter-pill ${fleetFilter === 'EXCEPTIONS' ? 'active' : ''}`} onClick={() => setFleetFilter('EXCEPTIONS')}>EXCEPTIONS</button>
+                </div>
+                
+                <div className="traffic-list" style={{ marginTop: '10px' }}>
+                  {myShips.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '20px', fontFamily: 'var(--font-sans)', fontSize: '13px' }}>No active logistics orders.</p>
+                  ) : (
+                    [...myShips]
+                      .filter(ship => {
+                        if (fleetFilter === 'ALL') return true;
+                        if (fleetFilter === 'EXCEPTIONS') return ship.status === 'Failed' || ship.status === 'Sheltered';
+                        return ship.status.toUpperCase() === fleetFilter;
+                      })
+                      .sort((a, b) => b.rawId - a.rawId)
+                      .map(ship => (
+                      <div 
+                        className="upgrade-card" 
+                        key={ship.id} 
+                        onClick={() => {
+                          setSelectedTrackingId(ship.id);
+                          if (ship.status === 'Outbound') {
+                            setIsAutoFollow(true);
+                            setManualPanToast(false);
+                          }
+                        }}
+                        style={{ cursor: 'pointer', display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                      >
+                        <div>
+                          <h4 style={{ margin: '0 0 4px 0', color: 'var(--accent-blue)', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', fontWeight: 700 }}>{ship.cargo}</h4>
+                          <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{ship.id} • {ship.destination}</p>
+                        </div>
+                        <span className={`badge ${ship.status === 'Arrived' ? 'docked' : (ship.status === 'Failed' || ship.status === 'Sheltered' ? 'failed' : 'outbound')}`}>
+                          {ship.status}
+                        </span>
+                      </div>
+                    ))
                   )}
                 </div>
-
-                <div className="scrollable-timeline-container">
-                  <div className="shopee-timeline">
-
-                    {/* Step 8: Cargo Discharged */}
-                    <div className={`timeline-step truck-step ${progress >= 0.95 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.95), 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.95), 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Cargo Discharged</strong>
-                        <p>Consignment successfully handed over to the final consignee.</p>
-                      </div>
-                    </div>
-
-                    {/* Step 7: Port of Discharge (POD) */}
-                    <div className={`timeline-step truck-step ${progress >= 0.85 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.85), 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.85), 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Port of Discharge </strong>
-                        <p>Vessel berthed and freight unloaded at destination terminal in {trackedShip.destination}.</p>
-                      </div>
-                    </div>
-
-                    {/* Exception Step (Only shows if storm hit) */}
-                    {(trackedShip.status === 'Sheltered' || trackedShip.status === 'Failed') && (
-                      <div className={`timeline-step ship-step completed`}>
-                        <div className="step-timestamp">
-                          <span className="date">{formatShopeeTime(Date.now(), 'date')}</span>
-                          <span className="time">{formatShopeeTime(Date.now(), 'time')}</span>
-                        </div>
-                        <div className="step-indicator"><div className="step-dot" style={{backgroundColor: '#e74c3c', boxShadow: '0 0 8px #e74c3c'}}></div><div className="step-line"></div></div>
-                        <div className="step-content">
-                          <strong style={{color: '#e74c3c'}}>Navigational Exception</strong>
-                          <p>Severe meteorological anomaly detected. Vessel executing holding pattern.</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Step 6: Deep Sea Transit */}
-                    <div className={`timeline-step ship-step ${progress > 0.20 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.21), 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.21), 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Deep Sea Transit</strong>
-                        <p>Vessel navigating active maritime shipping lanes.</p>
-                      </div>
-                    </div>
-
-                    {/* Step 5: Outbound Clearance */}
-                    <div className={`timeline-step ship-step ${progress >= 0.20 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.20), 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.20), 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Outbound Clearance</strong>
-                        <p>Manifest approved by port authority. Vessel departed Port of Loading (POL).</p>
-                      </div>
-                    </div>
-
-                    {/* Step 4: Export Customs */}
-                    <div className={`timeline-step truck-step ${progress >= 0.15 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.15), 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.15), 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Export Customs</strong>
-                        <p>Consignment undergoing border security and export declaration.</p>
-                      </div>
-                    </div>
-
-                    {/* Step 3: Terminal Gate-In */}
-                    <div className={`timeline-step truck-step ${progress >= 0.1 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.1), 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.1), 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Terminal Gate-In</strong>
-                        <p>Freight arrived at Origin Container Yard / Export Zone.</p>
-                      </div>
-                    </div>
-
-                    {/* Step 2: Cargo Stuffing */}
-                    <div className={`timeline-step truck-step ${progress >= 0.05 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.05), 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.05), 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Cargo Stuffing</strong>
-                        <p>Freight forwarder consolidating cargo and generating Bill of Lading.</p>
-                      </div>
-                    </div>
-
-                    {/* Step 1: Booking Confirmed */}
-                    <div className={`timeline-step truck-step ${progress >= 0.0 ? 'completed' : 'pending'}`}>
-                      <div className="step-timestamp">
-                        <span className="date">{formatShopeeTime(trackedShip.startTime, 'date')}</span>
-                        <span className="time">{formatShopeeTime(trackedShip.startTime, 'time')}</span>
-                      </div>
-                      <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
-                      <div className="step-content">
-                        <strong>Booking Confirmed</strong>
-                        <p>Transport order registered at {trackedShip.category && trackedShip.category.includes('Perishable') ? 'Central Cold Storage' : 'Panabo North Facility'}.</p>
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
               </>
-            )
-          )}
-        </div>
-      )}
+            ) : (
+              trackedShip && trackedNav && (
+                <>
+                  <div className="panel-header" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '15px' }}>
+                    <button 
+                      onClick={() => setSelectedTrackingId(null)} 
+                      style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', padding: 0, fontSize: '13px', fontWeight: 600, fontFamily: 'var(--font-sans)' }}
+                    >
+                      ← Back to Fleet
+                    </button>
 
-      {activePanel === 'hubs' && (
-        <div className="floating-side-panel">
-          <div className="panel-header">
-            <h3>Facility Operations</h3>
-            <span className="badge docked">{PANABO_HUBS.length + NATIONAL_HUBS.length + GLOBAL_HUBS.length} Online</span>
-          </div>
-          
-          <div className="traffic-list" style={{ marginTop: '10px' }}>
-            {/* Origin Facilities */}
-            <h4 style={{fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', margin: '5px 0'}}>Origin Facilities (Local)</h4>
-            {PANABO_HUBS.map(hub => (
-              <div className="upgrade-card" key={hub.id} onClick={() => setFlyTarget({ pos: hub.pos })} style={{ cursor: 'pointer', padding: '12px' }}>
-                <div className="tc-top">
-                  <h4>{hub.name}</h4>
-                  <span className={`badge ${hub.status === 'Optimal' || hub.status === 'Active' ? 'docked' : 'outbound'}`}>{hub.status}</span>
-                </div>
-                <p className="upgrade-desc" style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>
-                  {hub.type} <span style={{ color: '#aaa', fontWeight: 'normal' }}>• {hub.stat}</span>
-                </p>
-              </div>
-            ))}
+                    <button 
+                      className={`btn-auto-toggle ${isAutoFollow ? 'active' : ''}`}
+                      onClick={() => {
+                        const nextState = !isAutoFollow;
+                        setIsAutoFollow(nextState);
+                        if (nextState) setManualPanToast(false);
+                      }}
+                      disabled={trackedShip.status !== 'Outbound'}
+                      style={{ opacity: trackedShip.status !== 'Outbound' ? 0.5 : 1, cursor: trackedShip.status !== 'Outbound' ? 'not-allowed' : 'pointer' }}
+                    >
+                      {isAutoFollow ? '◉ AUTO: ON' : '○ AUTO: OFF'}
+                    </button>
+                  </div>
+                  
+                  <div className="tracking-info-header">
+                    <h4 style={{ margin: '0 0 5px 0', textTransform: 'uppercase', fontFamily: 'var(--font-sans)', fontSize: '15px' }}>{trackedShip.cargo}</h4>
+                    <p className="text-muted" style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)' }}>{trackedShip.id} • {trackedShip.destination}</p>
 
-            {/* 🔥 NEW: National Hubs */}
-            <h4 style={{fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', margin: '15px 0 5px 0'}}>Domestic Markets (National)</h4>
-            {NATIONAL_HUBS.map(hub => (
-              <div className="upgrade-card" key={hub.id} onClick={() => setFlyTarget({ pos: hub.pos })} style={{ cursor: 'pointer', padding: '12px', borderLeft: '3px solid #2ecc71' }}>
-                <div className="tc-top">
-                  <h4>{hub.name}</h4>
-                  <span className="badge docked">{hub.status}</span>
-                </div>
-                <p className="upgrade-desc" style={{ color: '#2ecc71', fontWeight: 'bold' }}>
-                  {hub.type} <span style={{ color: '#aaa', fontWeight: 'normal' }}>• {hub.stat}</span>
-                </p>
-              </div>
-            ))}
+                    {trackedShip.status === 'Outbound' && (
+                      <button
+                        type="button"
+                        className="btn-launch-sim"
+                        style={{
+                          width: '100%',
+                          marginTop: '12px',
+                          padding: '10px',
+                          fontSize: '12px',
+                          backgroundColor: 'var(--accent-blue)',
+                          color: '#0b0f19',
+                          border: 'none',
+                          borderRadius: '8px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'block'
+                        }}
+                        onClick={() => launchManual3DHelm(trackedShip, trackedNav.health)}
+                      >
+                        3D SIMULATION
+                      </button>
+                    )}
+                  </div>
 
-            {/* Global Hubs */}
-            <h4 style={{fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', margin: '15px 0 5px 0'}}>Destination Markets (Global)</h4>
-            {GLOBAL_HUBS.map(hub => (
-              <div className="upgrade-card" key={hub.id} onClick={() => setFlyTarget({ pos: hub.pos })} style={{ cursor: 'pointer', padding: '12px', borderLeft: '3px solid #f39c12' }}>
-                <div className="tc-top">
-                  <h4>{hub.name}</h4>
-                  <span className="badge docked">{hub.status}</span>
-                </div>
-                <p className="upgrade-desc" style={{ color: '#f39c12', fontWeight: 'bold' }}>
-                  {hub.type} <span style={{ color: '#aaa', fontWeight: 'normal' }}>• {hub.stat}</span>
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+                  <div className="scrollable-timeline-container">
+                    <div className="shopee-timeline">
 
-      {activePanel === 'export' && (
-        <div className="floating-side-panel">
-          <div className="panel-header"><h3>Deploy Logistics</h3></div>
-          <form onSubmit={handleLaunchRoute} className="sim-export-form">
-            <div className="form-group">
-              <label>Cargo Type</label>
-              <input type="text" required placeholder="e.g., Cavendish Bananas" value={ticketForm.cargo} onChange={e => setTicketForm({...ticketForm, cargo: e.target.value})} className="modern-input" />
+                      {/* Step 8: Cargo Discharged */}
+                      <div className={`timeline-step truck-step ${progress >= 0.95 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.95), 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.95), 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Cargo Discharged</strong>
+                          <p>Consignment successfully handed over to the final consignee.</p>
+                        </div>
+                      </div>
+
+                      {/* Step 7: Port of Discharge (POD) */}
+                      <div className={`timeline-step truck-step ${progress >= 0.85 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.85), 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.85), 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Port of Discharge </strong>
+                          <p>Vessel berthed and freight unloaded at destination terminal in {trackedShip.destination}.</p>
+                        </div>
+                      </div>
+
+                      {/* Exception Step (Only shows if storm hit) */}
+                      {(trackedShip.status === 'Sheltered' || trackedShip.status === 'Failed') && (
+                        <div className={`timeline-step ship-step completed`}>
+                          <div className="step-timestamp">
+                            <span className="date">{formatShopeeTime(Date.now(), 'date')}</span>
+                            <span className="time">{formatShopeeTime(Date.now(), 'time')}</span>
+                          </div>
+                          <div className="step-indicator"><div className="step-dot" style={{backgroundColor: '#ef4444', boxShadow: '0 0 8px #ef4444'}}></div><div className="step-line"></div></div>
+                          <div className="step-content">
+                            <strong style={{color: '#ef4444'}}>Navigational Exception</strong>
+                            <p>Severe meteorological anomaly detected. Vessel executing holding pattern.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 6: Deep Sea Transit */}
+                      <div className={`timeline-step ship-step ${progress > 0.20 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.21), 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.21), 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Deep Sea Transit</strong>
+                          <p>Vessel navigating active maritime shipping lanes.</p>
+                        </div>
+                      </div>
+
+                      {/* Step 5: Outbound Clearance */}
+                      <div className={`timeline-step ship-step ${progress >= 0.20 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.20), 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.20), 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Outbound Clearance</strong>
+                          <p>Manifest approved by port authority. Vessel departed Port of Loading (POL).</p>
+                        </div>
+                      </div>
+
+                      {/* Step 4: Export Customs */}
+                      <div className={`timeline-step truck-step ${progress >= 0.15 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.15), 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.15), 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Export Customs</strong>
+                          <p>Consignment undergoing border security and export declaration.</p>
+                        </div>
+                      </div>
+
+                      {/* Step 3: Terminal Gate-In */}
+                      <div className={`timeline-step truck-step ${progress >= 0.1 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.1), 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.1), 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Terminal Gate-In</strong>
+                          <p>Freight arrived at Origin Container Yard / Export Zone.</p>
+                        </div>
+                      </div>
+
+                      {/* Step 2: Cargo Stuffing */}
+                      <div className={`timeline-step truck-step ${progress >= 0.05 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.05), 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime + (trackedShip.duration * 0.05), 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Cargo Stuffing</strong>
+                          <p>Freight forwarder consolidating cargo and generating Bill of Lading.</p>
+                        </div>
+                      </div>
+
+                      {/* Step 1: Booking Confirmed */}
+                      <div className={`timeline-step truck-step ${progress >= 0.0 ? 'completed' : 'pending'}`}>
+                        <div className="step-timestamp">
+                          <span className="date">{formatShopeeTime(trackedShip.startTime, 'date')}</span>
+                          <span className="time">{formatShopeeTime(trackedShip.startTime, 'time')}</span>
+                        </div>
+                        <div className="step-indicator"><div className="step-dot"></div><div className="step-line"></div></div>
+                        <div className="step-content">
+                          <strong>Booking Confirmed</strong>
+                          <p>Transport order registered at {trackedShip.category && trackedShip.category.includes('Perishable') ? 'Central Cold Storage' : 'Panabo North Facility'}.</p>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </>
+              )
+            )}
+          </>
+        )}
+
+        {/* 🏠 FACILITY OPERATIONS PANEL (With Route Hover Previews) */}
+        {activePanel === 'hubs' && (
+          <>
+            <div className="panel-header">
+              <h3>Facility Operations</h3>
+              <span className="badge docked">{PANABO_HUBS.length + NATIONAL_HUBS.length + GLOBAL_HUBS.length} Online</span>
             </div>
-            <div className="form-row">
-              <div className="form-group" style={{ flex: 1 }}>
-                <label>Weight (kg)</label>
-                <select 
-                  value={ticketForm.weight} 
-                  onChange={e => setTicketForm({...ticketForm, weight: e.target.value})} 
-                  className="modern-select"
+            
+            <div className="traffic-list" style={{ marginTop: '10px' }}>
+              <h4 className="hub-section-label">Origin Facilities (Local)</h4>
+              {PANABO_HUBS.map(hub => (
+                <div
+                  className="upgrade-card"
+                  key={hub.id}
+                  onClick={() => setFlyTarget({ pos: hub.pos, zoom: 16 })}
+                  onMouseEnter={() => handlePreviewHover(hub.pos)}
+                  onMouseLeave={() => handlePreviewHover(null)}
+                  style={{ cursor: 'pointer', padding: '12px' }}
                 >
-                  <option value="1500">1,500 kg (Light)</option>
-                  <option value="2000">2,000 kg (Standard)</option>
-                  <option value="2500">2,500 kg (Heavy)</option>
-                  <option value="3000">3,000 kg</option>
-                  <option value="4000">4,000 kg</option>
-                  <option value="5000">5,000 kg (Maximum TEU)</option>
-                </select>
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label>Scale</label>
-                <select value={ticketForm.scale} onChange={e => setTicketForm({...ticketForm, scale: e.target.value, destination: ''})} className="modern-select">
-                  <option value="Local">Local</option>
-                  <option value="National">National</option>
-                  <option value="Global">Global</option>
-                </select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Goods Category</label>
-              <select value={ticketForm.type} onChange={e => setTicketForm({...ticketForm, type: e.target.value})} className="modern-select">
-                <option value="Perishable (Food)">Perishable (Food) - Spoilage Risk</option>
-                <option value="Electronics">Electronics - Secure Transit</option>
-                <option value="Raw Materials">Raw Materials - Standard</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Destination Market</label>
-              <input list="filtered-destinations" type="text" required placeholder="Select destination..." value={ticketForm.destination} onChange={e => setTicketForm({...ticketForm, destination: e.target.value})} className="modern-input" />
-              <datalist id="filtered-destinations">{getOptions().map(port => <option key={port} value={port} />)}</datalist>
-            </div>
-            <button type="submit" className={`btn-launch-sim ${isFleetFull ? 'state-deployed' : ''}`} disabled={isFleetFull}>
-              {isFleetFull ? "⏳ FLEET AT CAPACITY (3/3)" : "Confirm Order"}
-            </button>
-          </form>
-        </div>
-      )}
+                  <div className="tc-top">
+                    <h4>{hub.name}</h4>
+                    <span className={`badge ${hub.status === 'Optimal' || hub.status === 'Active' ? 'docked' : 'outbound'}`}>{hub.status}</span>
+                  </div>
+                  <p className="upgrade-desc" style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>
+                    {hub.type} <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', fontFamily: 'var(--font-mono)' }}>• {hub.stat}</span>
+                  </p>
+                </div>
+              ))}
 
-      <div className="sim-bottom-bar">
+              <h4 className="hub-section-label" style={{ marginTop: '15px' }}>Domestic Markets (National)</h4>
+              {NATIONAL_HUBS.map(hub => (
+                <div
+                  className="upgrade-card"
+                  key={hub.id}
+                  onClick={() => setFlyTarget({ pos: hub.pos, zoom: 12 })}
+                  onMouseEnter={() => handlePreviewHover(hub.pos)}
+                  onMouseLeave={() => handlePreviewHover(null)}
+                  style={{ cursor: 'pointer', padding: '12px', borderLeft: '3px solid var(--accent-green)' }}
+                >
+                  <div className="tc-top">
+                    <h4>{hub.name}</h4>
+                    <span className="badge docked">{hub.status}</span>
+                  </div>
+                  <p className="upgrade-desc" style={{ color: 'var(--accent-green)', fontWeight: 'bold' }}>
+                    {hub.type} <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', fontFamily: 'var(--font-mono)' }}>• {hub.stat}</span>
+                  </p>
+                </div>
+              ))}
+
+              <h4 className="hub-section-label" style={{ marginTop: '15px' }}>Destination Markets (Global)</h4>
+              {GLOBAL_HUBS.map(hub => (
+                <div
+                  className="upgrade-card"
+                  key={hub.id}
+                  onClick={() => setFlyTarget({ pos: hub.pos, zoom: 10 })}
+                  onMouseEnter={() => handlePreviewHover(hub.pos)}
+                  onMouseLeave={() => handlePreviewHover(null)}
+                  style={{ cursor: 'pointer', padding: '12px', borderLeft: '3px solid var(--accent-warning)' }}
+                >
+                  <div className="tc-top">
+                    <h4>{hub.name}</h4>
+                    <span className="badge docked">{hub.status}</span>
+                  </div>
+                  <p className="upgrade-desc" style={{ color: 'var(--accent-warning)', fontWeight: 'bold' }}>
+                    {hub.type} <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', fontFamily: 'var(--font-mono)' }}>• {hub.stat}</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* 📦 DEPLOY LOGISTICS PANEL (Deliverable 1 & 2: Custom Searchable Combobox + Route Hover Previews) */}
+        {activePanel === 'export' && (
+          <>
+            <div className="panel-header"><h3>Deploy Logistics</h3></div>
+            <form onSubmit={handleLaunchRoute} className="sim-export-form">
+              <div className="form-group">
+                <label>Cargo Type</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., Cavendish Bananas"
+                  value={ticketForm.cargo}
+                  onChange={e => setTicketForm({...ticketForm, cargo: e.target.value})}
+                  className="modern-input"
+                />
+              </div>
+              <div className="form-row">
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Weight (kg)</label>
+                  <select 
+                    value={ticketForm.weight} 
+                    onChange={e => setTicketForm({...ticketForm, weight: e.target.value})} 
+                    className="modern-select"
+                  >
+                    <option value="1500">1,500 kg (Light)</option>
+                    <option value="2000">2,000 kg (Standard)</option>
+                    <option value="2500">2,500 kg (Heavy)</option>
+                    <option value="3000">3,000 kg</option>
+                    <option value="4000">4,000 kg</option>
+                    <option value="5000">5,000 kg (Maximum TEU)</option>
+                  </select>
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label>Scale</label>
+                  <select
+                    value={ticketForm.scale}
+                    onChange={e => {
+                      setTicketForm({...ticketForm, scale: e.target.value, destination: ''});
+                      setDestinationSearch('');
+                      setPreviewRoute(null);
+                    }}
+                    className="modern-select"
+                  >
+                    <option value="Local">Local</option>
+                    <option value="National">National</option>
+                    <option value="Global">Global</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Goods Category</label>
+                <select value={ticketForm.type} onChange={e => setTicketForm({...ticketForm, type: e.target.value})} className="modern-select">
+                  <option value="Perishable (Food)">Perishable (Food) - Spoilage Risk</option>
+                  <option value="Electronics">Electronics - Secure Transit</option>
+                  <option value="Raw Materials">Raw Materials - Standard</option>
+                </select>
+              </div>
+
+              {/* Deliverable 1: Custom Searchable Destination Combobox */}
+              <div className="form-group combobox-container" ref={comboboxRef}>
+                <label>Destination Market</label>
+                <div className={`combobox-input-wrapper ${isComboboxOpen ? 'focused' : ''}`}>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Search or select destination port..."
+                    value={isComboboxOpen ? destinationSearch : (ticketForm.destination || destinationSearch)}
+                    onFocus={() => {
+                      setIsComboboxOpen(true);
+                      setDestinationSearch('');
+                    }}
+                    onChange={e => {
+                      setDestinationSearch(e.target.value);
+                      setTicketForm({...ticketForm, destination: e.target.value});
+                      setIsComboboxOpen(true);
+                    }}
+                    className="modern-input combobox-input"
+                  />
+                  <button
+                    type="button"
+                    className="combobox-chevron-btn"
+                    onClick={() => setIsComboboxOpen(!isComboboxOpen)}
+                    tabIndex={-1}
+                  >
+                    ▾
+                  </button>
+                </div>
+
+                {isComboboxOpen && (
+                  <div className="combobox-popover">
+                    {filteredDestinations.length === 0 ? (
+                      <div className="combobox-empty">No available ports matching filter</div>
+                    ) : (
+                      filteredDestinations.map(port => {
+                        const tier = getPortTier(port);
+                        const basePrice = DESTINATION_PRICING[port] || 0;
+                        const isSelected = ticketForm.destination === port;
+                        return (
+                          <div
+                            key={port}
+                            className={`combobox-option ${isSelected ? 'active' : ''}`}
+                            onMouseEnter={() => handlePreviewHover(DESTINATION_COORDINATES[port])}
+                            onMouseLeave={() => handlePreviewHover(null)}
+                            onClick={() => {
+                              setTicketForm({ ...ticketForm, destination: port });
+                              setDestinationSearch(port);
+                              setIsComboboxOpen(false);
+                              handlePreviewHover(null);
+                            }}
+                          >
+                            <span className="combobox-port-name">{port}</span>
+                            <span className={`tier-badge tier-${tier.toLowerCase()}`}>{tier}</span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button type="submit" className={`btn-launch-sim ${isFleetFull ? 'state-deployed' : ''}`} disabled={isFleetFull}>
+                {isFleetFull ? "⏳ FLEET AT CAPACITY (3/3)" : "Confirm Order"}
+              </button>
+            </form>
+          </>
+        )}
+      </aside>
+
+      {/* Deliverable 3: Centered Floating Navigation Pill */}
+      <nav className="sim-bottom-bar">
         <button 
-          className={`action-btn ${activePanel === 'tracking' ? 'tracking-active-pulse' : ''}`} 
+          className={`action-btn ${activePanel === 'tracking' ? 'active-blue tracking-active-pulse' : ''}`} 
           onClick={() => setActivePanel(activePanel === 'tracking' ? '' : 'tracking')}
         >
-          📍 Live Tracking {activePanel === 'tracking' && <span className="pulsing-dot-blue"></span>}
+          <span className={`nav-indicator-dot ${activePanel === 'tracking' || activeShipCount > 0 ? 'dot-live' : ''}`}></span>
+          <span>Live Tracking</span>
         </button>
         <button 
           className={`action-btn ${activePanel === 'hubs' ? 'active-blue' : ''}`} 
           onClick={() => setActivePanel(activePanel === 'hubs' ? '' : 'hubs')}
         >
-          🏠 Facility Ops
+          <span className={`nav-indicator-dot ${activePanel === 'hubs' ? 'dot-active' : ''}`}></span>
+          <span>Facility Ops</span>
         </button>
         <button 
           className={`action-btn ${activePanel === 'export' ? 'active-blue' : ''}`} 
           onClick={() => setActivePanel(activePanel === 'export' ? '' : 'export')}
         >
-          📦 Logistics
+          <span className={`nav-indicator-dot ${activePanel === 'export' ? 'dot-active' : ''}`}></span>
+          <span>Logistics</span>
         </button>
-      </div>
+      </nav>
 
       <main className="sim-map-fullscreen">
         <MapContainer 
           center={portPosition} 
           zoom={5} 
           minZoom={4} 
-          maxZoom={18} /* 🔥 INCREASED: Allows deep street-level zooming */
+          maxZoom={18}
           maxBounds={SEA_BOUNDS} 
           maxBoundsViscosity={1.0} 
           className="leaflet-container" 
@@ -1331,13 +1486,35 @@ const Simulation = () => {
           
           <MapFlyToHandler target={flyTarget} />
           
-          <AutoFollowCamera targetPos={trackedNav?.pos} isAutoFollow={isAutoFollow} 
-          transportType={trackedNav?.phase.type} currentSpeed={trackedShip?.currentSpeed} />
+          <AutoFollowCamera
+            targetPos={trackedNav?.pos}
+            isAutoFollow={isAutoFollow} 
+            transportType={trackedNav?.phase.type}
+            currentSpeed={trackedShip?.currentSpeed}
+            isWarpFlying={isWarpFlying}
+          />
 
-          {/* 🔥 Hide normal controls when AUTO is on! */}
           {!isAutoFollow && <CustomSimControls isLightMode={isLightMode} setIsLightMode={setIsLightMode} />}
-          {/* Update this line inside your <MapContainer> */}
-          <MapEventsTracker setZoomLevel={setZoomLevel} setIsAutoFollow={setIsAutoFollow} isAutoFollow={isAutoFollow} />
+          
+          <MapEventsTracker
+            setZoomLevel={setZoomLevel}
+            setIsAutoFollow={setIsAutoFollow}
+            isAutoFollow={isAutoFollow}
+            setManualPanToast={setManualPanToast}
+          />
+
+          {/* Deliverable 2: Interactive Route Hover Preview Polyline */}
+          {previewRoute && previewRoute.length > 1 && (
+            <Polyline
+              positions={previewRoute}
+              pathOptions={{
+                color: '#38bdf8',
+                dashArray: '8, 12',
+                weight: 3,
+                opacity: 0.9
+              }}
+            />
+          )}
 
           {zoomLevel > 10 && PANABO_HUBS.map(hub => (
             <Marker key={hub.id} position={hub.pos} icon={createHouseIcon()}>
@@ -1350,7 +1527,6 @@ const Simulation = () => {
             </Marker>
           ))}
 
-          {/* 🔥 NEW: Render National Hubs on the Map */}
           {zoomLevel < 25 && NATIONAL_HUBS.map(hub => (
             <Marker key={hub.id} position={hub.pos} icon={createHouseIcon()}>
               <Popup className="custom-popup dark-popup">
@@ -1362,12 +1538,11 @@ const Simulation = () => {
             </Marker>
           ))}
 
-          {/* 🔥 NEW: Global Destination Hubs */}
           {zoomLevel < 25 && GLOBAL_HUBS.map(hub => (
             <Marker key={hub.id} position={hub.pos} icon={createHouseIcon()}>
               <Popup className="custom-popup dark-popup">
                 <div style={{ padding: '5px' }}>
-                  <h4 style={{ margin: '0 0 5px 0', color: '#f39c12' }}>{hub.name}</h4>
+                  <h4 style={{ margin: '0 0 5px 0', color: '#f1c40f' }}>{hub.name}</h4>
                   <p style={{ margin: 0, fontSize: '12px', color: '#ccc' }}>{hub.type} • {hub.stat}</p>
                 </div>
               </Popup>
@@ -1376,14 +1551,10 @@ const Simulation = () => {
 
           {activeExports.map((exp) => {
             const nav = calculateNavigation(exp);
-            
-            // 🔥 FIX: Trust the A* Algorithm completely. Remove the unshift hack.
             let displayWaypoints = exp.waypoints ? [...exp.waypoints] : [];
 
             return (
               <React.Fragment key={exp.id}>
-                
-                {/* 🔥 MAP CLEANUP: Only draw lines if the ship is actively Outbound */}
                 {displayWaypoints.length > 0 && exp.status === 'Outbound' && (
                   <Polyline positions={displayWaypoints} pathOptions={{ color: '#2ecc71', dashArray: '5, 10', weight: 2, opacity: 0.6 }} />
                 )}
@@ -1396,26 +1567,23 @@ const Simulation = () => {
                   position={nav.pos} 
                   icon={createTransportIcon(nav.phase.type, exp.status, nav.angle, nav.health)}
                   eventHandlers={{ click: () => { 
-                    // 🔥 PRIVACY: Only open the private side panel if YOU own the ship
                     if (exp.commander === userId) {
                       setSelectedTrackingId(exp.id); 
                       setActivePanel('tracking'); 
                     }
                   } }}
                 >
-                  {/* 🔥 HIDE POPUP WHEN AUTO IS ON (Prevents dual-modals on screen) */}
                   {!(isAutoFollow && selectedTrackingId === exp.id) && (
                     <Popup className="custom-popup dark-popup">
                       <div style={{ padding: '12px', textAlign: 'left', minWidth: '190px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
                           <div>
-                            <h4 style={{ margin: 0, color: '#3498db', textTransform: 'uppercase' }}>{exp.cargo}</h4>
-                            <span style={{ fontSize: '10px', color: '#888' }}>{exp.id} • Cmdr: {exp.commander}</span>
+                            <h4 style={{ margin: 0, color: 'var(--accent-blue)', textTransform: 'uppercase' }}>{exp.cargo}</h4>
+                            <span style={{ fontSize: '10px', color: '#888', fontFamily: 'var(--font-mono)' }}>{exp.id} • Cmdr: {exp.commander}</span>
                           </div>
                           <span style={{ fontSize: '10px', color: '#ccc', marginTop: '2px' }}>{exp.status}</span>
                         </div>
                         
-                        {/* 🔥 PRIVACY UI: Only show controls if the current user owns this ship */}
                         {exp.commander !== userId ? (
                            <div style={{ textAlign: 'center', padding: '10px 0', borderTop: '1px solid #333', marginTop: '10px' }}>
                              <p style={{ color: 'var(--text-secondary)', fontSize: '11px', margin: 0 }}>Restricted Access.</p>
@@ -1423,23 +1591,21 @@ const Simulation = () => {
                            </div>
                         ) : exp.status === 'Sheltered' ? (
                            <div className="relaunch-container">
-                             <p className="relaunch-warning-text" style={{ color: '#e74c3c' }}>VESSEL BLOWN BACK</p>
-                             {/* 🔥 FIX: Open the new modal instead of launching instantly */}
+                             <p className="relaunch-warning-text" style={{ color: '#ef4444' }}>VESSEL BLOWN BACK</p>
                              <button className="btn-launch-sim relaunch-btn" onClick={() => setRelaunchEvent(exp)}>
                                Review Tactical Options
                              </button>
                            </div>
                         ) : exp.status === 'Failed' ? (
-                           <p style={{ color: '#e74c3c', fontWeight: 'bold', textAlign: 'center' }}>CONTRACT TERMINATED</p>
+                           <p style={{ color: '#ef4444', fontWeight: 'bold', textAlign: 'center' }}>CONTRACT TERMINATED</p>
                         ) : (
                            <>
-                             {/* --- NEW DASHBOARD UI --- */}
                               <div style={{ marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#aaa', textTransform: 'uppercase', marginBottom: '4px' }}>
-                                  <span>Goods Health</span><span>{nav.health}%</span>
+                                  <span>Goods Health</span><span style={{ fontFamily: 'var(--font-mono)' }}>{nav.health}%</span>
                                 </div>
                                 <div style={{ width: '100%', height: '6px', background: '#333', borderRadius: '3px', overflow: 'hidden' }}>
-                                  <div style={{ width: `${nav.health}%`, height: '100%', background: nav.health < 70 ? '#e74c3c' : 'var(--accent-blue)', transition: 'width 0.3s' }}></div>
+                                  <div style={{ width: `${nav.health}%`, height: '100%', background: nav.health < 70 ? '#ef4444' : 'var(--accent-blue)', transition: 'width 0.3s' }}></div>
                                 </div>
                               </div>
 
@@ -1461,12 +1627,6 @@ const Simulation = () => {
                                   <span className="tele-val">{nav.pos[1].toFixed(4)}</span>
                                 </div>
                               </div>
-
-                              {exp.status === 'Outbound' && (
-                                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-
-                                </div>
-                             )}
                            </>
                         )}
                       </div>
@@ -1478,29 +1638,28 @@ const Simulation = () => {
           })}
         </MapContainer>
 
-        {/* 🔥 THE NEW TARGET HUD (Replaces Minimap) */}
+        {/* 🔥 THE NEW TARGET HUD */}
         {isAutoFollow && trackedNav && trackedShip && (
           <div className="target-hud-overlay">
             <div style={{ padding: '15px', textAlign: 'left' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                 <div>
-                  <h4 style={{ margin: 0, color: '#3498db', textTransform: 'uppercase', fontSize: '16px' }}>{trackedShip.cargo}</h4>
-                  <span style={{ fontSize: '11px', color: '#888' }}>{trackedShip.id} • Cmdr: {userId}</span>
+                  <h4 style={{ margin: 0, color: 'var(--accent-blue)', textTransform: 'uppercase', fontSize: '16px', fontFamily: 'var(--font-sans)' }}>{trackedShip.cargo}</h4>
+                  <span style={{ fontSize: '11px', color: '#888', fontFamily: 'var(--font-mono)' }}>{trackedShip.id} • Cmdr: {userId}</span>
                 </div>
                 <span className={`badge ${trackedShip.status === 'Failed' || trackedShip.status === 'Sheltered' ? 'failed' : 'outbound'}`} style={{ marginTop: '2px' }}>{trackedShip.status}</span>
               </div>
               
               <div style={{ marginBottom: '15px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#aaa', textTransform: 'uppercase', marginBottom: '6px' }}>
-                  <span>Goods Health</span><span>{trackedNav.health}%</span>
+                  <span>Goods Health</span><span style={{ fontFamily: 'var(--font-mono)' }}>{trackedNav.health}%</span>
                 </div>
                 <div style={{ width: '100%', height: '6px', background: '#333', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ width: `${trackedNav.health}%`, height: '100%', background: trackedNav.health < 70 ? '#e74c3c' : 'var(--accent-blue)', transition: 'width 0.3s' }}></div>
+                  <div style={{ width: `${trackedNav.health}%`, height: '100%', background: trackedNav.health < 70 ? '#ef4444' : 'var(--accent-blue)', transition: 'width 0.3s' }}></div>
                 </div>
               </div>
 
-              {/* 🔥 NEW: Replaced the old text with the modern Phase / Progress Block */}
-              <div style={{ padding: '6px', borderRadius: '4px', marginBottom: '15px', border: '1px solid rgba(130, 160, 255, 0.1)' }}>
+              <div style={{ padding: '8px', borderRadius: '6px', marginBottom: '15px', border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.02)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>
                   <span>Current Phase</span>
                   <span>Progress</span>
@@ -1509,7 +1668,7 @@ const Simulation = () => {
                   <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 'bold' }}>
                     {trackedShip.status === 'Arrived' ? 'DELIVERED' : (trackedNav.phase?.label || 'IN TRANSIT').toUpperCase()}
                   </span>
-                  <strong style={{ color: 'var(--accent-blue)', fontSize: '12px' }}>
+                  <strong style={{ color: 'var(--accent-blue)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
                     {trackedShip.status === 'Arrived' ? '100.0' : ((Math.min(((Date.now() + (trackedShip.timeOffset || 0)) - trackedShip.startTime) / trackedShip.duration, 1)) * 100).toFixed(1)}%
                   </strong>
                 </div>
@@ -1518,12 +1677,10 @@ const Simulation = () => {
               {trackedShip.status === 'Outbound' && (
                 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                    {/* 🔥 THE FIX: Applied the same 1% Dynamic Math here */}
                     <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 1)}>▶</button>
                     <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed > 1 && trackedShip.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, Math.max(2, Math.floor(trackedShip.duration * 0.01 / 3000)))}>⏭</button>
                     <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 21600)}>🚀</button>
                   </div>
-
                 </div>
               )}
             </div>
@@ -1534,4 +1691,5 @@ const Simulation = () => {
     </div>
   );
 };
+
 export default Simulation;
