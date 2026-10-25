@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './Dashboard.css'; 
@@ -101,6 +101,13 @@ const PieChartIcon = () => (
   </svg>
 );
 
+const LearningIcon = () => (
+  <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z" />
+    <path d="M4 5.5v16M8 7h8M8 11h7" />
+  </svg>
+);
+
 const LogoutIcon = () => (
   <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -140,6 +147,9 @@ const MoonIcon = () => (
 
 const Dashboard = () => {
   const navigate = useNavigate(); 
+  const location = useLocation();
+  const isLmsRoute = location.pathname === '/lms' || location.pathname === '/lms/instructor';
+  const isInstructorRoute = location.pathname === '/lms/instructor';
   
   // --- MAP CONSTRAINTS ---
   const SEA_BOUNDS = [[-15.0, 90.0], [30.0, 150.0]];
@@ -243,7 +253,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
   return (
-    <div className={`dashboard-wrapper ${isLightMode ? 'light-mode' : 'dark-mode'}`}>
+    <div className={`dashboard-wrapper ${isLightMode ? 'light-mode' : 'dark-mode'} ${isInstructorRoute ? 'instructor-lms-layout' : ''}`}>
       
       {/* VOYAGE LOG MODAL (Under Construction / Mock) */}
       {logModalVessel && (
@@ -336,14 +346,17 @@ const CustomTooltip = ({ active, payload, label }) => {
                   <span style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 6px #10b981' }}></span>
                 </span>
               </button>
-              <button className={activeMenu === 'live_map' ? 'active' : ''} onClick={() => setActiveMenu('live_map')}>
+              <button className={!isLmsRoute && activeMenu === 'live_map' ? 'active' : ''} onClick={() => { setActiveMenu('live_map'); navigate('/dashboard'); }}>
                 <MapIcon /> <span className="nav-text">Live Map</span>
               </button>
-              <button className={activeMenu === 'traffic' ? 'active' : ''} onClick={() => setActiveMenu('traffic')}>
+              <button className={!isLmsRoute && activeMenu === 'traffic' ? 'active' : ''} onClick={() => { setActiveMenu('traffic'); navigate('/dashboard'); }}>
                 <ShipIcon /> <span className="nav-text">Vessel Traffic</span>
               </button>
-              <button className={activeMenu === 'analytics' ? 'active' : ''} onClick={() => setActiveMenu('analytics')}>
+              <button className={!isLmsRoute && activeMenu === 'analytics' ? 'active' : ''} onClick={() => { setActiveMenu('analytics'); navigate('/dashboard'); }}>
                 <PieChartIcon /> <span className="nav-text">Analytics</span>
+              </button>
+              <button className={`lms-nav-btn ${isLmsRoute ? 'active' : ''}`} type="button" onClick={() => navigate('/lms')} aria-label="Open learning management system">
+                <LearningIcon /> <span className="nav-text">LMS</span>
               </button>
             </nav>
           </div>
@@ -363,7 +376,7 @@ const CustomTooltip = ({ active, payload, label }) => {
         </div>
       </aside>
       
-      <main className={`map-view ${isSidebarOpen ? 'sidebar-expanded' : ''}`}>
+      <main className={`map-view ${isSidebarOpen ? 'sidebar-expanded' : ''} ${isLmsRoute ? 'dashboard-lms-route' : ''}`}>
         <div className="radar-grid-overlay"></div>
         {/* 🔥 NEW: Live Real-World Weather Widget */}
         <LiveWeatherWidget />
@@ -539,6 +552,12 @@ const CustomTooltip = ({ active, payload, label }) => {
 
         {/* 🔥 FIX: Moved the Radar Grid here so it renders OVER the map! */}
         <div className="radar-grid-overlay"></div>
+
+        {isLmsRoute && (
+          <div className="dashboard-route-content">
+            <Outlet />
+          </div>
+        )}
         
       </main>
     </div>

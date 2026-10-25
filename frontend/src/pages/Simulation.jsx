@@ -203,15 +203,21 @@ const Simulation = () => {
   const [isLightMode, setIsLightMode] = useState(false); 
   const [zoomLevel, setZoomLevel] = useState(14); 
   const [notification, setNotification] = useState(null);
-  const [chaosEvent, setChaosEvent] = useState(null); 
-  const [chaosTimer, setChaosTimer] = useState(15); 
   const [globalWeather, setGlobalWeather] = useState('NOMINAL');
   const [weatherSyncTrigger, setWeatherSyncTrigger] = useState(0); // 🔥 NEW: Triggers HUD update
   const [relaunchEvent, setRelaunchEvent] = useState(null); // 🔥 THE FIX: Added Relaunch State!
   const [assessmentConfig, setAssessmentConfig] = useState(null);
   const [truckSimEvent, setTruckSimEvent] = useState(null); // 🔥 Tracks active 3D Truck Haul
-  const [useLegacyQuiz, setUseLegacyQuiz] = useState(false); // 🔥 Keeps quiz hidden unless toggled!  
-  const [ticketForm, setTicketForm] = useState({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global' });
+  const [useLegacyQuiz, setUseLegacyQuiz] = useState(false); // 🔥 Keeps quiz hidden unless toggled!
+  const [ticketForm, setTicketForm] = useState({
+    cargo: '',
+    weight: '1500',
+    destination: '',
+    type: 'Perishable (Food)',
+    scale: 'Global',
+    incoterm: 'CIF',
+    teuCount: 1
+  });  
   const [selectedTrackingId, setSelectedTrackingId] = useState(null);
   const [flyTarget, setFlyTarget] = useState(null);
   const [isAutoFollow, setIsAutoFollow] = useState(false); // 🔥 AUTO Camera State
@@ -541,30 +547,26 @@ const Simulation = () => {
   useEffect(() => {
     const tickRateMs = 1000;
     const interval = setInterval(() => {
-      setChaosEvent(currentChaos => {
-        setRelaunchEvent(currentRelaunch => {
-          if (currentChaos || currentRelaunch) {
-             return currentRelaunch;
-          }
-
-          setSimTime(Date.now()); 
-
-          setActiveExports(currentExports => {
-            
-            const updatedExports = currentExports.map(exp => {
-              if (exp.status === 'Outbound') {
-                const newOffset = (exp.timeOffset || 0) + (tickRateMs * (exp.currentSpeed || 1)) - tickRateMs;
-                localStorage.setItem(`offset_${exp.id}`, newOffset.toString());
-                return { ...exp, timeOffset: newOffset };
-              }
-              return exp;
-            });
-            return updatedExports;
-          });
-
+      setRelaunchEvent(currentRelaunch => {
+        if (currentRelaunch) {
           return currentRelaunch;
+        }
+
+        setSimTime(Date.now());
+
+        setActiveExports(currentExports => {
+          const updatedExports = currentExports.map(exp => {
+            if (exp.status === 'Outbound') {
+              const newOffset = (exp.timeOffset || 0) + (tickRateMs * (exp.currentSpeed || 1)) - tickRateMs;
+              localStorage.setItem(`offset_${exp.id}`, newOffset.toString());
+              return { ...exp, timeOffset: newOffset };
+            }
+            return exp;
+          });
+          return updatedExports;
         });
-        return currentChaos;
+
+        return currentRelaunch;
       });
     }, tickRateMs);
     
@@ -582,24 +584,12 @@ const Simulation = () => {
           return; 
         }
 
-        changeShipSpeed(ship.id, 0); 
-        setChaosEvent(ship); 
-        addTerminalLog(`> MAYDAY: Severe weather anomaly detected at ${ship.id}.`, 'danger');
-        setChaosTimer(15);
+        // Handled naturally via globalWeather telemetry without halting simulation with a Mayday popup
+        addTerminalLog(`> TELEMETRY: ${ship.id} traversing heavy weather sector under autonomous ballast control.`, 'warning');
         setActiveExports(prev => prev.map(s => s.id === ship.id ? { ...s, eventHandled: true } : s));
       }
     });
   }, [simTime, activeExports]);
-
-  useEffect(() => {
-    let interval;
-    if (chaosEvent && chaosTimer > 0 && !assessmentConfig) {
-      interval = setInterval(() => { setChaosTimer(prev => prev - 1); }, 1000);
-    } else if (chaosEvent && chaosTimer === 0 && !assessmentConfig) {
-      handleChaosChoice('PUSH'); 
-    }
-    return () => clearInterval(interval);
-  }, [chaosEvent, chaosTimer, assessmentConfig]);
 
   useEffect(() => {
     activeExports.forEach(ship => {
@@ -657,6 +647,15 @@ const Simulation = () => {
       return;
     }
 
+    if (isVgmOverload) {
+      setNotification({
+        title: 'VGM CRANE OVERLOAD',
+        message: 'Payload exceeds 25,000 kg (25 Tons) per container. Increase TEU allocation or reduce gross cargo weight.',
+        type: 'error'
+      });
+      return;
+    }
+
     const payload = {
       cargo_name: ticketForm.cargo,
       weight_kg: Number(ticketForm.weight) || 5000, 
@@ -664,7 +663,10 @@ const Simulation = () => {
       scale: ticketForm.scale, 
       category: ticketForm.type,
       username: userId,
-      departure_time: new Date(simTime).toISOString()
+      departure_time: new Date(simTime).toISOString(),
+      incoterm: ticketForm.incoterm || 'CIF',
+      teu_count: activeTeuCount,
+      vgm_status: vgmStatus
     };
 
     try {
@@ -676,11 +678,8 @@ const Simulation = () => {
 
       if (res.ok) {
         await fetchGameState(); 
-        addTerminalLog(`> OUTBOUND: ${ticketForm.cargo} dispatched to ${ticketForm.destination}.`, 'highlight');
-        setTicketForm({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global' });
-        setDestinationSearch('');
-        setPreviewRoute(null);
-        setActivePanel('tracking'); 
+        addTerminalLog(`> OUTBOUND: ${ticketForm.cargo} [${payload.incoterm} • ${payload.teu_count} TEU] dispatched to ${ticketForm.destination}.`, 'highlight');
+        setTicketForm({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global', incoterm: 'CIF', teuCount: 1 });
         
         const newShipsRes = await fetch(`${API_BASE}/admin/ticketing/active?username=${userId}`);
         await newShipsRes.json();
@@ -691,18 +690,6 @@ const Simulation = () => {
     } catch (e) { 
       setNotification({ title: 'Connection Lost', message: 'Cannot reach FastAPI backend. Is your server running?', type: 'error' });
     }
-  };
-
-  const handleChaosChoice = (choice) => {
-    if (!chaosEvent) return;
-    const nav = calculateNavigation(chaosEvent);
-    const startingHealth = parseFloat(nav.health) || 100;
-    
-    setAssessmentConfig({
-      event: chaosEvent,
-      type: choice,
-      health: startingHealth
-    });
   };
 
   const executeRelaunch = async (choice) => {
@@ -724,7 +711,6 @@ const Simulation = () => {
 
   const processAssessmentResult = async (activeEvent, choice, result) => {
     setAssessmentConfig(null);
-    if (choice === 'PUSH' || choice === 'RETREAT') setChaosEvent(null);
     if (choice === 'REROUTE' || choice === 'WAIT') setRelaunchEvent(null);
 
     const shipPersonalTime = Date.now() + (activeEvent.timeOffset || 0);
@@ -781,8 +767,23 @@ const Simulation = () => {
 
   // 🔥 DYNAMIC UI PRICING: Calculate cost based on weight multiplier
   const baseRouteCost = DESTINATION_PRICING[ticketForm.destination] || 0;
-  const weightMultiplier = (Number(ticketForm.weight) || 1500) / 1000;
+  const weightKg = Number(ticketForm.weight) || 1500;
+  const weightMultiplier = weightKg / 1000;
   const currentRouteCost = baseRouteCost * weightMultiplier;
+
+  // 🔥 MODULE 1: VGM 25-Ton (25,000 kg) Gantry Crane Rule & TEU Allocation
+  const autoMinTeu = Math.max(1, Math.ceil(weightKg / 25000));
+  const activeTeuCount = Math.max(1, Number(ticketForm.teuCount) || autoMinTeu);
+  const weightPerTeu = weightKg / activeTeuCount;
+  const isVgmOverload = weightPerTeu > 25000;
+  const vgmStatus = isVgmOverload ? 'OVERLOAD' : 'VERIFIED';
+
+  const INCOTERM_ADVISORY = {
+    EXW: "EXW Advisory: Risk transfers at Origin Factory. 100% Trainee liability across inland truck haul & deep-sea transit.",
+    FOB: "FOB Advisory: Supplier covers inland trucking to port; Trainee assumes risk once loaded aboard vessel at POL.",
+    CIF: "CIF Advisory: Seller covers freight & marine insurance; underwriters absorb 80% of storm damage at sea.",
+    DDP: "DDP Advisory: All-inclusive Door-to-Door forwarder coverage with pre-paid customs duties and full risk shield."
+  };
 
   // 🔥 PRIVACY FILTER: Only calculate fleet capacity based on YOUR ships
   const myShips = activeExports.filter(ship => ship.commander === userId);
@@ -804,7 +805,7 @@ const Simulation = () => {
 
   // --- RENDER ---
   return (
-    <div className={`sim-wrapper ${isLightMode ? 'light-mode' : ''} ${chaosEvent ? 'storm-alert' : ''}`}>
+    <div className={`sim-wrapper ${isLightMode ? 'light-mode' : ''}`}>
       
       {/* 🔥 The subtle radar hex-grid over the map */}
       <div className="radar-grid-overlay"></div>
@@ -869,17 +870,24 @@ const Simulation = () => {
       )}
 
       {/* 🚛 3D INLAND TRUCK SIMULATOR (Warehouse -> Port Terminal) */}
-      {truckSimEvent && (
+      {truckSimEvent && (() => {
+        const activeShip = truckSimEvent.event;
+        const targetGateInTime = activeShip.startTime + (activeShip.duration * 0.10);
+        const remainingMs = Math.max(0, targetGateInTime - (Date.now() + (activeShip.timeOffset || 0)));
+        const remainingSeconds = Math.max(15, Math.ceil(remainingMs / 1000));
+
+        return (
         <TruckHaul3D
           weatherState={globalWeather}
-          cargo={truckSimEvent.event.cargo}
-          weightKg={truckSimEvent.event.weightKg || Number(ticketForm.weight) || 2500}
+          cargo={activeShip.cargo}
+          weightKg={activeShip.weightKg || Number(ticketForm.weight) || 2500}
           originHub={
-            truckSimEvent.event.category && truckSimEvent.event.category.includes('Perishable')
+            activeShip.category && activeShip.category.includes('Perishable')
               ? 'Central Cold Storage'
               : 'Panabo North Facility'
           }
           initialHealth={truckSimEvent.health}
+          remainingSeconds={remainingSeconds}
           onExit={() => {
             changeShipSpeed(truckSimEvent.event.id, 1);
             setTruckSimEvent(null);
@@ -907,21 +915,27 @@ const Simulation = () => {
             }
           }}
         />
-      )}
+        );
+      })()}
 
       {/* 🧠 3D HELM SIMULATOR (With Non-Destructive Toggle to Legacy Quiz) */}
-      {assessmentConfig && (
-        useLegacyQuiz ? (
+      {assessmentConfig && (() => {
+        const activeShip = assessmentConfig.event;
+        return useLegacyQuiz ? (
           <AssessmentModal 
             mode={assessmentConfig.type} 
-            cargo={assessmentConfig.event.cargo}
+            cargo={activeShip.cargo}
             initialHealth={assessmentConfig.health}
-            onComplete={(result) => processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result)}
+            onComplete={(result) => processAssessmentResult(activeShip, assessmentConfig.type, result)}
           />
         ) : (
           <VesselHelm3D
             mode={assessmentConfig.type}
             weatherState={globalWeather}
+            destination={assessmentConfig.event.destination}
+            departureTime={assessmentConfig.event.startTime}
+            totalDurationMs={assessmentConfig.event.duration}
+            timeOffset={assessmentConfig.event.timeOffset || 0}
             cargo={assessmentConfig.event.cargo}
             weightKg={assessmentConfig.event.weightKg || Number(ticketForm.weight) || 2500}
             initialHealth={assessmentConfig.health}
@@ -932,36 +946,10 @@ const Simulation = () => {
               setAssessmentConfig(null);
             }}
           />
-        )
-      )}
+        );
+      })()}
   
-      {/* ⚠️ PHASE 1: INITIAL STORM DETECTED MODAL */}
-      {chaosEvent && (
-        <div className="modal-overlay" style={{ zIndex: 10000 }}>
-          <div className="chaos-modal" style={{ borderTopColor: '#ef4444', boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 40px rgba(239, 68, 68, 0.15)' }}>
-            <div className="modal-shake-chaos">
-              <h1 className="warning-title" style={{ color: '#ef4444' }}>⚠️ MAYDAY: STORM DETECTED</h1>
-              <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '14px' }}>Logistics order <strong style={{color: '#fff'}}>{chaosEvent.cargo}</strong> hit a severe storm.</p>
-              
-              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '12px', borderRadius: '8px', display: 'inline-block', marginBottom: '10px' }}>
-                <h3 style={{ color: '#ef4444', margin: 0, animation: 'pulseGlow 1s infinite', fontSize: '16px', letterSpacing: '2px', fontFamily: 'var(--font-mono)' }}>
-                  AUTO-PUSH IN: {chaosTimer}s
-                </h3>
-              </div>
-
-              <div className="chaos-actions">
-                <button className="btn-push danger-btn" onClick={() => handleChaosChoice('PUSH')} style={{ flex: 1 }}>
-                  PUSH THROUGH <span className="btn-subtext">Roll the dice (80% Risk)</span>
-                </button>
-                
-                <button className="btn-push warning-btn" onClick={() => handleChaosChoice('RETREAT')} style={{ flex: 1 }}>
-                  TACTICAL RETREAT <span className="btn-subtext">Fall back to Safe Node (Freezes)</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Mayday Modal Decommissioned — Handled via Autonomous Weather & Telematics */}
 
       {/* 🧭 PHASE 2: THE TACTICAL RELAUNCH MODAL */}
       {relaunchEvent && (
@@ -1327,23 +1315,84 @@ const Simulation = () => {
                   className="modern-input"
                 />
               </div>
+              {/* Row A (Payload Specs): Weight (kg) & Container Allocation (TEU) */}
               <div className="form-row">
                 <div className="form-group" style={{ flex: 1 }}>
                   <label>Weight (kg)</label>
                   <select 
                     value={ticketForm.weight} 
-                    onChange={e => setTicketForm({...ticketForm, weight: e.target.value})} 
+                    onChange={e => {
+                      const nextWeight = Number(e.target.value);
+                      const recommendedTeu = Math.max(1, Math.ceil(nextWeight / 25000));
+                      setTicketForm({
+                        ...ticketForm,
+                        weight: e.target.value,
+                        teuCount: nextWeight > 25000 ? ticketForm.teuCount : recommendedTeu
+                      });
+                    }} 
                     className="modern-select"
                   >
                     <option value="1500">1,500 kg (Light)</option>
                     <option value="2000">2,000 kg (Standard)</option>
                     <option value="2500">2,500 kg (Heavy)</option>
-                    <option value="3000">3,000 kg</option>
-                    <option value="4000">4,000 kg</option>
-                    <option value="5000">5,000 kg (Maximum TEU)</option>
+                    <option value="5000">5,000 kg (Consolidated)</option>
+                    <option value="15000">15,000 kg (15t Comm.)</option>
+                    <option value="25000">25,000 kg (25t Limit)</option>
+                    <option value="32000">32,000 kg (32t Bulk)</option>
+                    <option value="50000">50,000 kg (50t Multi)</option>
                   </select>
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>
+                  <label>Container Allocation (TEU)</label>
+                  <select
+                    value={activeTeuCount}
+                    onChange={e => setTicketForm({ ...ticketForm, teuCount: Number(e.target.value) })}
+                    className="modern-select"
+                  >
+                    <option value={1}>1 TEU (20ft Std)</option>
+                    <option value={2}>2 TEU (Dual)</option>
+                    <option value={3}>3 TEU (Triple)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Compact VGM Status Pill immediately beneath Row A */}
+              <div className={`vgm-badge ${isVgmOverload ? 'vgm-overload' : 'vgm-verified'}`}>
+                {isVgmOverload
+                  ? `⚠️ VGM OVERLOAD: Exceeds 25,000 kg (25 Tons) crane safety limit per container`
+                  : `[✓ VGM VERIFIED: ${activeTeuCount} TEU (${(weightKg / activeTeuCount / 1000).toFixed(1)}t / container)]`}
+              </div>
+
+              <div className="form-group">
+                <label>Goods Category</label>
+                <select value={ticketForm.type} onChange={e => setTicketForm({...ticketForm, type: e.target.value})} className="modern-select">
+                  <option value="Perishable (Food)">Perishable (Food) — Spoilage Risk</option>
+                  <option value="Electronics">Electronics — Secure Transit</option>
+                  <option value="Raw Materials">Raw Materials — Standard</option>
+                </select>
+              </div>
+
+              {/* Module 1: Incoterms 2020 Selector with Concise Option Labels */}
+              <div className="form-group">
+                <label>Incoterms</label>
+                <select
+                  value={ticketForm.incoterm}
+                  onChange={e => setTicketForm({ ...ticketForm, incoterm: e.target.value })}
+                  className="modern-select"
+                >
+                  <option value="EXW">EXW — Ex-Works</option>
+                  <option value="FOB">FOB — Free on Board</option>
+                  <option value="CIF">CIF — Cost, Insurance & Freight</option>
+                  <option value="DDP">DDP — Delivered Duty Paid</option>
+                </select>
+                <div className="incoterm-advisory-tag">
+                  {INCOTERM_ADVISORY[ticketForm.incoterm]}
+                </div>
+              </div>
+
+              {/* Row B (Trade Scope): Scale & Destination Market */}
+              <div className="form-row">
+                <div className="form-group" style={{ flex: 0.85 }}>
                   <label>Scale</label>
                   <select
                     value={ticketForm.scale}
@@ -1359,80 +1408,79 @@ const Simulation = () => {
                     <option value="Global">Global</option>
                   </select>
                 </div>
-              </div>
-              <div className="form-group">
-                <label>Goods Category</label>
-                <select value={ticketForm.type} onChange={e => setTicketForm({...ticketForm, type: e.target.value})} className="modern-select">
-                  <option value="Perishable (Food)">Perishable (Food) - Spoilage Risk</option>
-                  <option value="Electronics">Electronics - Secure Transit</option>
-                  <option value="Raw Materials">Raw Materials - Standard</option>
-                </select>
-              </div>
 
-              {/* Deliverable 1: Custom Searchable Destination Combobox */}
-              <div className="form-group combobox-container" ref={comboboxRef}>
-                <label>Destination Market</label>
-                <div className={`combobox-input-wrapper ${isComboboxOpen ? 'focused' : ''}`}>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Search or select destination port..."
-                    value={isComboboxOpen ? destinationSearch : (ticketForm.destination || destinationSearch)}
-                    onFocus={() => {
-                      setIsComboboxOpen(true);
-                      setDestinationSearch('');
-                    }}
-                    onChange={e => {
-                      setDestinationSearch(e.target.value);
-                      setTicketForm({...ticketForm, destination: e.target.value});
-                      setIsComboboxOpen(true);
-                    }}
-                    className="modern-input combobox-input"
-                  />
-                  <button
-                    type="button"
-                    className="combobox-chevron-btn"
-                    onClick={() => setIsComboboxOpen(!isComboboxOpen)}
-                    tabIndex={-1}
-                  >
-                    ▾
-                  </button>
-                </div>
-
-                {isComboboxOpen && (
-                  <div className="combobox-popover">
-                    {filteredDestinations.length === 0 ? (
-                      <div className="combobox-empty">No available ports matching filter</div>
-                    ) : (
-                      filteredDestinations.map(port => {
-                        const tier = getPortTier(port);
-                        const basePrice = DESTINATION_PRICING[port] || 0;
-                        const isSelected = ticketForm.destination === port;
-                        return (
-                          <div
-                            key={port}
-                            className={`combobox-option ${isSelected ? 'active' : ''}`}
-                            onMouseEnter={() => handlePreviewHover(DESTINATION_COORDINATES[port])}
-                            onMouseLeave={() => handlePreviewHover(null)}
-                            onClick={() => {
-                              setTicketForm({ ...ticketForm, destination: port });
-                              setDestinationSearch(port);
-                              setIsComboboxOpen(false);
-                              handlePreviewHover(null);
-                            }}
-                          >
-                            <span className="combobox-port-name">{port}</span>
-                            <span className={`tier-badge tier-${tier.toLowerCase()}`}>{tier}</span>
-                          </div>
-                        );
-                      })
-                    )}
+                {/* Deliverable 1: Custom Searchable Destination Combobox */}
+                <div className="form-group combobox-container" ref={comboboxRef} style={{ flex: 1.45 }}>
+                  <label>Destination Market</label>
+                  <div className={`combobox-input-wrapper ${isComboboxOpen ? 'focused' : ''}`}>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Select port..."
+                      value={isComboboxOpen ? destinationSearch : (ticketForm.destination || destinationSearch)}
+                      onFocus={() => {
+                        setIsComboboxOpen(true);
+                        setDestinationSearch('');
+                      }}
+                      onChange={e => {
+                        setDestinationSearch(e.target.value);
+                        setTicketForm({...ticketForm, destination: e.target.value});
+                        setIsComboboxOpen(true);
+                      }}
+                      className="modern-input combobox-input"
+                    />
+                    <button
+                      type="button"
+                      className="combobox-chevron-btn"
+                      onClick={() => setIsComboboxOpen(!isComboboxOpen)}
+                      tabIndex={-1}
+                    >
+                      ▾
+                    </button>
                   </div>
-                )}
+
+                  {isComboboxOpen && (
+                    <div className="combobox-popover">
+                      {filteredDestinations.length === 0 ? (
+                        <div className="combobox-empty">No available ports matching filter</div>
+                      ) : (
+                        filteredDestinations.map(port => {
+                          const tier = getPortTier(port);
+                          const isSelected = ticketForm.destination === port;
+                          return (
+                            <div
+                              key={port}
+                              className={`combobox-option ${isSelected ? 'active' : ''}`}
+                              onMouseEnter={() => handlePreviewHover(DESTINATION_COORDINATES[port])}
+                              onMouseLeave={() => handlePreviewHover(null)}
+                              onClick={() => {
+                                setTicketForm({ ...ticketForm, destination: port });
+                                setDestinationSearch(port);
+                                setIsComboboxOpen(false);
+                                handlePreviewHover(null);
+                              }}
+                            >
+                              <span className="combobox-port-name">{port}</span>
+                              <span className={`tier-badge tier-${tier.toLowerCase()}`}>{tier}</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <button type="submit" className={`btn-launch-sim ${isFleetFull ? 'state-deployed' : ''}`} disabled={isFleetFull}>
-                {isFleetFull ? "⏳ FLEET AT CAPACITY (3/3)" : "Confirm Order"}
+              <button
+                type="submit"
+                className={`btn-launch-sim ${isFleetFull ? 'state-deployed' : ''}`}
+                disabled={isFleetFull || isVgmOverload}
+              >
+                {isFleetFull
+                  ? "⏳ FLEET AT CAPACITY (3/3)"
+                  : isVgmOverload
+                  ? "⚠️ VGM CRANE OVERLOAD (>25t/TEU)"
+                  : "Confirm Order"}
               </button>
             </form>
           </>
@@ -1677,9 +1725,9 @@ const Simulation = () => {
               {trackedShip.status === 'Outbound' && (
                 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                    <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 1)}>▶</button>
-                    <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed > 1 && trackedShip.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, Math.max(2, Math.floor(trackedShip.duration * 0.01 / 3000)))}>⏭</button>
-                    <button type="button" disabled={chaosEvent || relaunchEvent} className={`time-opt-btn ${trackedShip.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: (chaosEvent || relaunchEvent) ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 21600)}>🚀</button>
+                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 1)}>▶</button>
+                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed > 1 && trackedShip.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, Math.max(2, Math.floor(trackedShip.duration * 0.01 / 3000)))}>⏭</button>
+                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 21600)}>🚀</button>
                   </div>
                 </div>
               )}

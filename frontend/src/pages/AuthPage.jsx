@@ -11,7 +11,9 @@ const AuthPage = ({ initialMode, onClose }) => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [instructorInviteCode, setInstructorInviteCode] = useState("");
   const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isInstructorMode, setIsInstructorMode] = useState(false);
   
   // UI State
   const [showPassword, setShowPassword] = useState(false);
@@ -48,24 +50,29 @@ const AuthPage = ({ initialMode, onClose }) => {
       return;
     }
 
-    const path = isLogin ? "login" : "register";
+    const path = isLogin ? "login" : isInstructorMode ? "register/instructor" : "register";
+    const payload = { username, password };
+    if (!isLogin && isInstructorMode) payload.invite_code = instructorInviteCode;
     
     try {
       const response = await fetch(`http://127.0.0.1:8000/${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(payload),
       });
       
       const data = await response.json();
       
       if (response.ok) {
         if (isLogin) {
-          // 🔥 NEW LOGIC: Check roles before allowing entry
-          if (isAdminMode && data.role !== 'admin') {
+          const requiredRole = isAdminMode ? 'admin' : isInstructorMode ? 'instructor' : null;
+          if (requiredRole && data.role !== requiredRole) {
             setIsSuccess(false);
-            setMessage("ACCESS DENIED: Standard commanders cannot access System Overwatch.");
-            localStorage.clear(); // Keep them locked out completely
+            setMessage(isAdminMode
+              ? "ACCESS DENIED: This account does not have admin access."
+              : "ACCESS DENIED: This account does not have instructor access.");
+            localStorage.removeItem('username');
+            localStorage.removeItem('role');
             return;
           }
 
@@ -74,16 +81,34 @@ const AuthPage = ({ initialMode, onClose }) => {
           
           localStorage.setItem('username', data.user || username); // Fallback to state if data.user is missing
           localStorage.setItem('role', data.role); // 🔥 Save role for Admin.jsx to check
-
-          setTimeout(() => { 
-            if (data.role === 'admin') {
-              navigate('/admin'); // Admins always go to admin panel
-            } else {
-              navigate('/dashboard'); // Commanders always go to normal dashboard
-            }
-          }, 600);
+          const destination = data.role === 'admin'
+            ? '/admin'
+            : data.role === 'instructor'
+              ? '/lms/instructor'
+              : '/dashboard';
+          navigate(destination, { replace: true });
 
           setUsername(""); setPassword(""); setConfirmPassword("");
+        } else if (isInstructorMode) {
+          const loginResponse = await fetch('http://127.0.0.1:8000/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password }),
+          });
+          const loginData = await loginResponse.json();
+          if (!loginResponse.ok || loginData.role !== 'instructor') {
+            setIsSuccess(false);
+            setMessage("Instructor account created, but automatic sign-in failed. Please sign in again.");
+            setIsLogin(true);
+            return;
+          }
+
+          setIsSuccess(true);
+          setMessage("Instructor account created. Opening your dashboard...");
+          localStorage.setItem('username', loginData.user || username);
+          localStorage.setItem('role', loginData.role);
+          navigate('/lms/instructor', { replace: true });
+          setUsername(""); setPassword(""); setConfirmPassword(""); setInstructorInviteCode("");
         } else {
           setIsSuccess(true);
           setMessage("Account created successfully! You can now log in.");
@@ -105,9 +130,17 @@ const AuthPage = ({ initialMode, onClose }) => {
 
   const handleTabSwitch = (toLogin) => {
     setIsLogin(toLogin);
+    if (!toLogin) setIsAdminMode(false);
     setMessage("");
     setPassword("");
     setConfirmPassword("");
+  };
+
+  const switchAccessMode = (mode) => {
+    setIsAdminMode(mode === 'admin');
+    setIsInstructorMode(mode === 'instructor');
+    setMessage("");
+    setPassword("");
   };
 
   return (
@@ -136,14 +169,18 @@ const AuthPage = ({ initialMode, onClose }) => {
 
         {/* --- DYNAMIC TITLE & SUBTITLE --- */}
         <div className="screen-title">
-          {isAdminMode 
-            ? "System Overwatch" 
+          {isAdminMode
+            ? "System Overwatch"
+            : isInstructorMode
+              ? (isLogin ? "Instructor Portal" : "Create instructor account")
             : (isLogin ? "Welcome back" : "Create account")}
         </div>
         
         <div className="screen-subtitle">
-          {isAdminMode 
-            ? "Provide clearance credentials for Admin access." 
+          {isAdminMode
+            ? "Provide clearance credentials for Admin access."
+            : isInstructorMode
+              ? (isLogin ? "Sign in with your instructor credentials." : "Use your instructor invite code to create an account.")
             : (isLogin 
                 ? "Secure access for WharfIntel Port Management." 
                 : "Passwords are hashed with a unique salt & pepper.")}
@@ -196,6 +233,23 @@ const AuthPage = ({ initialMode, onClose }) => {
           )}
         </div>
 
+        {!isLogin && isInstructorMode && (
+          <div className="form-group">
+            <label htmlFor="instructor-invite-code">Instructor Invite Code</label>
+            <div className="input-wrap">
+              <input
+                id="instructor-invite-code"
+                type="password"
+                autoComplete="off"
+                placeholder="provided by your administrator"
+                value={instructorInviteCode}
+                onChange={(e) => setInstructorInviteCode(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+        )}
+
         {!isLogin && (
           <div className="form-group">
             <label className="con-firm">Confirm Password</label>
@@ -226,13 +280,22 @@ const AuthPage = ({ initialMode, onClose }) => {
           </button>
 
           {isLogin && (
-            <div className="admin-toggle-wrap">
-              <button 
+            <div className="auth-access-switch">
+              <button
                 type="button" 
                 className="admin-toggle-btn"
-                onClick={() => setIsAdminMode(!isAdminMode)}
+                aria-pressed={isAdminMode}
+                onClick={() => switchAccessMode(isAdminMode ? 'commander' : 'admin')}
               >
-                {isAdminMode ? "Return to Commander Login" : "Admin Login?"}
+                {isAdminMode ? "Commander Login" : "Admin Login"}
+              </button>
+              <button
+                type="button"
+                className="admin-toggle-btn"
+                aria-pressed={isInstructorMode}
+                onClick={() => switchAccessMode(isInstructorMode ? 'commander' : 'instructor')}
+              >
+                {isInstructorMode ? "Commander Login" : "Instructor Login"}
               </button>
             </div>
           )}

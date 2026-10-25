@@ -108,6 +108,11 @@ const Admin = () => {
   const [money, setMoney] = useState(200000);
   const [reputation, setReputation] = useState(50);
   const [message, setMessage] = useState('');
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteAdminPassword, setInviteAdminPassword] = useState('');
+  const [generatedInvite, setGeneratedInvite] = useState(null);
+  const [inviteError, setInviteError] = useState('');
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
 
   const toggleFacilityOps = () => {
     setShowFacilityOps(true);
@@ -209,6 +214,46 @@ const Admin = () => {
   const openCreateModal = () => {
     setModalMode('create'); setUsername(''); setPassword('');
     setMoney(200000); setReputation(50); setMessage(''); setIsModalOpen(true);
+  };
+
+  const openInviteModal = () => {
+    setInviteAdminPassword('');
+    setGeneratedInvite(null);
+    setInviteError('');
+    setInviteModalOpen(true);
+  };
+
+  const generateInstructorInvite = async (event) => {
+    event.preventDefault();
+    setInviteError('');
+    setIsGeneratingInvite(true);
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/admin/instructor-invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin_username: localStorage.getItem('username'),
+          admin_password: inviteAdminPassword,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Could not generate an instructor invite.');
+      setGeneratedInvite(data);
+      setInviteAdminPassword('');
+    } catch (error) {
+      setInviteError(error.message || 'Could not reach the backend.');
+    } finally {
+      setIsGeneratingInvite(false);
+    }
+  };
+
+  const copyInstructorInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedInvite.invite_code);
+      setInviteError('Invite copied. Share it only with the intended instructor.');
+    } catch {
+      setInviteError('Clipboard access is unavailable. Select and copy the invite code.');
+    }
   };
 
   const openEditModal = (user) => {
@@ -438,12 +483,15 @@ const Admin = () => {
             minHeight: 0, /* 🔥 CRUCIAL: Forces Chrome to scroll internally instead of overflowing screen */
             boxSizing: 'border-box'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-              <button 
+            <div className="admin-provision-actions">
+              <button
                 onClick={openCreateModal}
                 style={{ backgroundColor: 'var(--cyber-green)', color: '#000', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer', transition: '0.2s', boxShadow: '0 0 15px var(--cyber-glow)' }}
               >
                 + Provision New Commander
+              </button>
+              <button className="admin-invite-button" type="button" onClick={openInviteModal}>
+                Generate Instructor Invite
               </button>
             </div>
 
@@ -777,6 +825,42 @@ const Admin = () => {
               {message && <div style={{ color: '#ef4444', fontSize: '12px', textAlign: 'center' }}>{message}</div>}
             </form>
           </div>
+        </div>
+      )}
+
+      {inviteModalOpen && (
+        <div className="modal-overlay admin-invite-overlay" onClick={() => setInviteModalOpen(false)}>
+          <section className="card auth-modal-card admin-modal-card admin-invite-card" role="dialog" aria-modal="true" aria-labelledby="instructor-invite-title" onClick={event => event.stopPropagation()}>
+            <button className="exit-btn" type="button" onClick={() => setInviteModalOpen(false)} aria-label="Close instructor invite">&times;</button>
+            <p className="admin-invite-eyebrow">PERSONNEL / ACCESS CONTROL</p>
+            <h2 id="instructor-invite-title">Generate instructor invite</h2>
+            <p className="admin-invite-description">Create a random, single-use code that expires after 24 hours. Verify your admin password to continue.</p>
+
+            {!generatedInvite ? (
+              <form className="admin-invite-form" onSubmit={generateInstructorInvite}>
+                <label htmlFor="invite-admin-username">Admin username</label>
+                <input id="invite-admin-username" type="text" value={localStorage.getItem('username') || ''} readOnly />
+                <label htmlFor="invite-admin-password">Admin password</label>
+                <input id="invite-admin-password" type="password" value={inviteAdminPassword} onChange={event => setInviteAdminPassword(event.target.value)} autoComplete="current-password" required />
+                {inviteError && <p className="admin-invite-error" role="alert">{inviteError}</p>}
+                <div className="admin-invite-actions">
+                  <button className="admin-invite-cancel" type="button" onClick={() => setInviteModalOpen(false)}>Cancel</button>
+                  <button className="admin-invite-submit" type="submit" disabled={isGeneratingInvite}>{isGeneratingInvite ? 'Generating…' : 'Generate code'}</button>
+                </div>
+              </form>
+            ) : (
+              <div className="admin-invite-result">
+                <label htmlFor="generated-instructor-invite">Single-use instructor code</label>
+                <input id="generated-instructor-invite" value={generatedInvite.invite_code} readOnly onFocus={event => event.target.select()} />
+                <p>Expires {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(generatedInvite.expires_at))}. The instructor enters this code when registering.</p>
+                {inviteError && <p className="admin-invite-copy-note" role="status">{inviteError}</p>}
+                <div className="admin-invite-actions">
+                  <button className="admin-invite-cancel" type="button" onClick={() => setInviteModalOpen(false)}>Close</button>
+                  <button className="admin-invite-submit" type="button" onClick={copyInstructorInvite}>Copy code</button>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       )}
       

@@ -1,2 +1,4 @@
 *.csv filter=lfs diff=lfs merge=lfs -text
 *.joblib filter=lfs diff=lfs merge=lfs -text
+backend/app/*.joblib filter=lfs diff=lfs merge=lfs -text
+backend/app/ais_data.csv filter=lfs diff=lfs merge=lfs -text

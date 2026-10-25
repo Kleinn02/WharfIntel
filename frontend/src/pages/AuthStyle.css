@@ -38,6 +38,8 @@
 .auth-modal-card {
   width: 100%;
   max-width: 420px; 
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   min-height: 560px; /* 🔥 This forces the card to always stay the same size */
   display: flex;
   flex-direction: column;
@@ -255,8 +257,11 @@ input::placeholder { color: var(--text-dim); }
 }
 
 /* --- Admin Mode Toggle Link --- */
-.admin-toggle-wrap {
-  text-align: center;
+.auth-access-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
   margin-top: 16px;
 }
 
@@ -277,4 +282,14 @@ input::placeholder { color: var(--text-dim); }
 .admin-toggle-btn:hover {
   color: #82a0ff; /* That tactical amber color */
   text-decoration: underline;
+}
+
+.admin-toggle-btn[aria-pressed="true"] {
+  color: #82a0ff;
+}
+
+@media (max-width: 480px) {
+  .auth-modal-card { padding: 30px 22px 24px; }
+  .auth-access-switch { gap: 10px; }
+  .admin-toggle-btn { font-size: 10px; }
 }

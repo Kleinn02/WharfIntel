@@ -329,6 +329,120 @@
   box-shadow: 0 10px 40px rgba(0,0,0,0.8), 0 0 20px rgba(16, 185, 129, 0.05) !important;
 }
 
+.admin-theme .admin-provision-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 30px;
+}
+
+.admin-theme .admin-invite-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid rgba(56, 189, 248, .45);
+  border-radius: 8px;
+  color: #7dd3fc;
+  background: rgba(14, 165, 233, .1);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.admin-theme .admin-invite-button:hover {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, .18);
+}
+
+.admin-theme .admin-invite-card {
+  gap: 0;
+  min-height: auto;
+  padding: 28px;
+  overflow: auto;
+}
+
+.admin-theme .admin-invite-eyebrow {
+  margin: 0 0 8px;
+  color: #38bdf8;
+  font: 9px 'Space Mono', Consolas, monospace;
+  letter-spacing: 1px;
+}
+
+.admin-theme .admin-invite-card h2 {
+  margin: 0 0 8px;
+  color: #e2e8f0;
+  font-size: 20px;
+}
+
+.admin-theme .admin-invite-description,
+.admin-theme .admin-invite-result > p {
+  margin: 0 0 18px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.admin-theme .admin-invite-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.admin-theme .admin-invite-form label,
+.admin-theme .admin-invite-result label {
+  color: #bac8d7;
+  font-size: 10px;
+}
+
+.admin-theme .admin-invite-card input {
+  margin: 0 0 8px;
+}
+
+.admin-theme .admin-invite-card input[readonly] {
+  color: #94a3b8 !important;
+}
+
+.admin-theme .admin-invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 8px;
+}
+
+.admin-theme .admin-invite-actions button {
+  min-height: 37px;
+  padding: 0 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.admin-theme .admin-invite-cancel {
+  border: 1px solid var(--cyber-border-heavy);
+  color: #94a3b8;
+  background: transparent;
+}
+
+.admin-theme .admin-invite-submit {
+  border: 1px solid #38bdf8;
+  color: #082f49;
+  background: #38bdf8;
+}
+
+.admin-theme .admin-invite-submit:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.admin-theme .admin-invite-error { margin: 2px 0; color: #fda4af; font-size: 11px; }
+.admin-theme .admin-invite-copy-note { margin: 0 0 12px !important; color: #67e8f9 !important; font-size: 10px !important; }
+
+@media (max-width: 560px) {
+  .admin-theme .admin-provision-actions { align-items: stretch; flex-direction: column; }
+  .admin-theme .admin-invite-button { width: 100%; }
+}
+
 /* 🔥 Admin Modal Overrides (Fixed Number Fields) */
 .admin-theme .admin-modal-card input {
   background: rgba(0,0,0,0.5) !important;

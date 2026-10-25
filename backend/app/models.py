@@ -62,3 +62,13 @@ class SystemLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     event_type = Column(String, index=True)  # e.g., "AUTH", "SYSTEM", "CLIMATE"
     description = Column(String)
+
+class InstructorInvite(Base):
+    __tablename__ = "instructor_invites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code_hash = Column(String(64), unique=True, index=True, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    redeemed_at = Column(DateTime, nullable=True)

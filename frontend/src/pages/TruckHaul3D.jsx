@@ -2,12 +2,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
+const CAMERA_MODES = [
+  { id: 1, key: '1', label: 'DRONE CHASE' },
+  { id: 2, key: '2', label: 'IN-CAB POV' },
+  { id: 3, key: '3', label: 'ROADSIDE CCTV' },
+  { id: 4, key: '4', label: 'FREE ORBIT' }
+];
+
 const TruckHaul3D = ({
   weatherState = 'NOMINAL',
   cargo = 'Cavendish Bananas',
   weightKg = 2500,
   originHub = 'Central Cold Storage',
   initialHealth = 100,
+  remainingSeconds = 1420,
   onComplete,
   onExit
 }) => {
@@ -16,6 +24,20 @@ const TruckHaul3D = ({
   // Live Weather Sync
   const [liveWeather, setLiveWeather] = useState(weatherState || 'NOMINAL');
   const weatherRef = useRef(weatherState || 'NOMINAL');
+
+  // Camera Director & Speed Multiplier States
+  const [cameraMode, setCameraMode] = useState(1); // 1: Drone Chase, 2: In-Cab, 3: CCTV, 4: Free Orbit
+  const cameraModeRef = useRef(1);
+
+  const [simSpeed, setSimSpeed] = useState(1); // 1x or 2x
+  const simSpeedRef = useRef(1);
+
+  const teuCount = Math.max(1, Math.ceil((Number(weightKg) || 2500) / 25000));
+  const isPerishable =
+    originHub.toLowerCase().includes('cold') ||
+    cargo.toLowerCase().includes('banana') ||
+    cargo.toLowerCase().includes('food') ||
+    cargo.toLowerCase().includes('perishable');
 
   useEffect(() => {
     if (weatherState) {
@@ -47,93 +69,46 @@ const TruckHaul3D = ({
   }, []);
 
   const [hud, setHud] = useState({
-    speed: 0,
+    speed: 35,
+    rpm: 1450,
+    fuelRate: 31.2,
+    reeferTemp: -4.2,
+    compressorStatus: 'ACTIVE',
+    gear: 'D',
     steerDeg: 0,
     articulationDeg: 0,
-    rollDeg: 0,
-    signedRollDeg: 0,
-    brakePressure: 0,
-    isBraking: false,
-    isReversingHitch: false,
-    violationAlertActive: false,
-    turnViolationAlertActive: false,
     blinker: 'OFF', // 'OFF' | 'LEFT' | 'RIGHT'
     blinkOn: false,
-    navInstruction: '[ 🅿️ Reverse [S] into Blue Trailer (or Press [H]) ]',
-    health: Math.round(initialHealth),
-    progress: 0,
-    timeLeft: 90,
-    strikes: 0,
-    governorTimer: 0,
+    navStatus: 'AUTOPILOT: CRUISING NORTHBOUND CORRIDOR',
     nextLightState: 'GREEN',
     nextLightDist: 0,
-    stage: 'HITCH', // 'HITCH' -> 'HAUL' -> 'DELIVERED' | 'CRASHED'
-    status: 'ACTIVE',
-    failReason: ''
+    nextLightLabel: 'MIDWAY CROSSING',
+    progress: 0,
+    lapCount: 1,
+    cutoffTimer: Math.max(0, Math.ceil(remainingSeconds)), // Synchronized Gate Appointment Countdown
+    health: Math.round(initialHealth)
   });
-
-  // Controls Overlay with 3.5s Auto-Fade & [?] Toggle
-  const [showControls, setShowControls] = useState(true);
-  const controlsFadeTimerRef = useRef(null);
-
-  const triggerControlsAutoFade = () => {
-    if (controlsFadeTimerRef.current) clearTimeout(controlsFadeTimerRef.current);
-    controlsFadeTimerRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3500);
-  };
-
-  useEffect(() => {
-    triggerControlsAutoFade();
-    return () => {
-      if (controlsFadeTimerRef.current) clearTimeout(controlsFadeTimerRef.current);
-    };
-  }, []);
-
-  const [cameraFlash, setCameraFlash] = useState(false);
-
-  const keysRef = useRef({ w: false, s: false, a: false, d: false, space: false });
-  const forceHitchRef = useRef(false);
 
   // Right-Click 360 Orbit Camera Ref
   const camOrbitRef = useRef({
     isRightDown: false,
     lastX: 0,
     lastY: 0,
-    yawOffset: 0,
-    pitchOffset: 0,
-    zoomDist: 26
+    yawOffset: 0.35,
+    pitchOffset: 2.5,
+    zoomDist: 28
   });
 
-  const simRef = useRef({
-    speed: 0,
-    throttle: 0,
-    steerAngle: 0,        // Front wheel steering (-38 to +38 deg)
-    cabHeading: 0,        // Tractor Head orientation (rad)
-    trailerHeading: 0,    // Blue Trailer orientation (rad)
-    rollAngle: 0,
-    brakePressure: 0,     // Pneumatic air brake gauge (0-100)
-    hitchCamBlend: 0,     // Smooth camera blend for Reverse Hitching Assistance
-    blinker: 'OFF',       // 'OFF' | 'LEFT' | 'RIGHT'
-    turnActive: false,    // Tracks whether steering exceeded 12 deg during current turn
-    turnStartHeading: 0,  // Reference heading before entering turn
-    unsignaledPenaltyCooldown: 0,
-    turnViolationTimer: 0,
-    routeLeg: 1,          // 1: Northbound to Jct 1, 2: Westbound Coastal Bypass, 3: Port Approach
-    health: Number(initialHealth) || 100,
-    timeLeft: 90,         // 90-second Port Gate Slot Countdown once hitched
-    strikes: 0,           // 3 Red Light Violations = Contract Terminated
-    governorTimer: 0,     // 8-second 20 km/h speed limiter penalty
-    violationAlertTimer: 0,
-    isHitched: false,
-    isFinished: false,
-    isCrashed: false,
-    cameraShake: 0,
-    maxSpeedCap: 40,
-    weightFactor: 0.7 + (Number(weightKg || 2500) / 5000) * 0.75
-  });
+  const switchCameraMode = (modeId) => {
+    cameraModeRef.current = modeId;
+    setCameraMode(modeId);
+  };
 
-  const ROLLOVER_LIMIT = 38;
+  const toggleSimSpeed = () => {
+    const next = simSpeedRef.current === 1 ? 2 : 1;
+    simSpeedRef.current = next;
+    setSimSpeed(next);
+  };
 
   useEffect(() => {
     const container = mountRef.current;
@@ -149,16 +124,16 @@ const TruckHaul3D = ({
 
     const skyHex = isCyc ? 0x1a2634 : isDet ? 0x4a5d6e : 0x74b9ff;
     scene.background = new THREE.Color(skyHex);
-    scene.fog = new THREE.FogExp2(skyHex, 0.0013);
+    scene.fog = new THREE.FogExp2(skyHex, 0.0012);
 
     const camera = new THREE.PerspectiveCamera(
       55,
       container.clientWidth / container.clientHeight,
-      0.5,
-      1800
+      0.1,
+      2000
     );
-    camera.position.set(7, 12, 6);
-    const camLookTarget = new THREE.Vector3(7, 3.2, 22);
+    camera.position.set(18, 14, 52);
+    const camLookTarget = new THREE.Vector3(10, 3.2, 20);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -167,22 +142,22 @@ const TruckHaul3D = ({
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 1.0);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 1.05);
     scene.add(hemiLight);
 
     const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.25);
-    dirLight.position.set(80, 160, 60);
+    dirLight.position.set(90, 170, 70);
     dirLight.castShadow = true;
     scene.add(dirLight);
 
     // ==========================================
-    // 2. MULTI-TURN ROUTE GEOMETRY (WAREHOUSE -> LEFT TURN JCT -> RIGHT TURN PORT)
+    // 2. CLOSED-CIRCUIT INDUSTRIAL CORRIDOR GEOMETRY
     // ==========================================
-    // Segment 1: Warehouse Exit along X = 0, Z = +30 to Z = -420 (Northbound -Z)
-    // Junction 1 (Left Turn): (X = 0, Z = -420) -> Turn Left 90° onto Coastal Bypass (-X)
-    // Segment 2: Coastal Port Bypass along Z = -420, X = 0 to X = -520 (Westbound -X)
-    // Junction 2 (Right Turn): (X = -520, Z = -420) -> Turn Right 90° onto Port Terminal Approach (-Z)
-    // Segment 3: Port Terminal Approach along X = -520, Z = -420 to Z = -820 (Drop-Off Zone)
+    // Closed Rectangular Loop with Smoothly Chamfered Corners:
+    // Leg 1 (Northbound Highway): X = 10, Z = +30 -> -410
+    //Leg 2 (Westbound Coastal Bypass): Z = -420, X = 0 -> -510
+    // Leg 3 (Southbound Port Terminal Approach): X = -520, Z = -430 -> +20
+    // Leg 4 (Eastbound Return Connector): Z = +30, X = -510 -> 0
 
     const grassMat = new THREE.MeshLambertMaterial({ color: 0x244218 });
     const coastalVergeMat = new THREE.MeshLambertMaterial({ color: 0x1f3a18 });
@@ -195,139 +170,119 @@ const TruckHaul3D = ({
     const cyanGuideMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
 
     // World Ground
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(3600, 3600), grassMat);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(3800, 3800), grassMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.1;
     scene.add(ground);
 
-    // Warehouse Yard Asphalt (Origin)
-    const yardAsphalt = new THREE.Mesh(new THREE.PlaneGeometry(96, 105), asphaltMat);
+    // Origin Depot Yard (Central Cold Storage / Panabo Facility)
+    const yardAsphalt = new THREE.Mesh(new THREE.PlaneGeometry(110, 110), asphaltMat);
     yardAsphalt.rotation.x = -Math.PI / 2;
-    yardAsphalt.position.set(0, 0.01, 25);
+    yardAsphalt.position.set(0, 0.01, 35);
     scene.add(yardAsphalt);
 
-    // Brick Warehouse Building
-    const warehouseBuilding = new THREE.Mesh(new THREE.BoxGeometry(72, 18, 16), brickMat);
-    warehouseBuilding.position.set(0, 9, 68);
+    const warehouseBuilding = new THREE.Mesh(new THREE.BoxGeometry(76, 18, 18), brickMat);
+    warehouseBuilding.position.set(0, 9, 76);
     scene.add(warehouseBuilding);
 
-    const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(74, 1.4, 17), concreteMat);
-    roofTrim.position.set(0, 18.2, 68);
+    const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(78, 1.4, 19), concreteMat);
+    roofTrim.position.set(0, 18.2, 76);
     scene.add(roofTrim);
 
     const doorMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
-    [-21, -7, 7, 21].forEach((dx) => {
+    [-22, -7, 7, 22].forEach((dx) => {
       const door = new THREE.Mesh(new THREE.BoxGeometry(8.5, 10, 0.6), doorMat);
-      door.position.set(dx, 5, 59.8);
+      door.position.set(dx, 5, 66.8);
       scene.add(door);
-
-      [-4.6, 4.6].forEach((rx) => {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.9, 14), concreteMat);
-        rail.position.set(dx + rx, 0.45, 52);
-        scene.add(rail);
-      });
     });
 
-    const parkedTrailer = new THREE.Mesh(
-      new THREE.BoxGeometry(4.4, 5.2, 16.5),
-      new THREE.MeshLambertMaterial({ color: 0x94a3b8 })
-    );
-    parkedTrailer.position.set(21, 3.8, 46);
-    scene.add(parkedTrailer);
-
-    // --- SEGMENT 1: NORTHBOUND HIGHWAY (X = 0, Z = -20 to -450) ---
-    const seg1Shoulder = new THREE.Mesh(new THREE.PlaneGeometry(48, 460), shoulderMat);
+    // --- LEG 1: NORTHBOUND HIGHWAY (X = 0, Z = +50 to -450) ---
+    const seg1Shoulder = new THREE.Mesh(new THREE.PlaneGeometry(48, 500), shoulderMat);
     seg1Shoulder.rotation.x = -Math.PI / 2;
-    seg1Shoulder.position.set(0, 0.015, -220);
+    seg1Shoulder.position.set(0, 0.015, -200);
     scene.add(seg1Shoulder);
 
-    const seg1Asphalt = new THREE.Mesh(new THREE.PlaneGeometry(42, 460), asphaltMat);
+    const seg1Asphalt = new THREE.Mesh(new THREE.PlaneGeometry(42, 500), asphaltMat);
     seg1Asphalt.rotation.x = -Math.PI / 2;
-    seg1Asphalt.position.set(0, 0.02, -220);
+    seg1Asphalt.position.set(0, 0.02, -200);
     scene.add(seg1Asphalt);
 
     [-0.35, 0.35].forEach((yx) => {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 390), yellowLineMat);
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 420), yellowLineMat);
       line.rotation.x = -Math.PI / 2;
       line.position.set(yx, 0.04, -195);
       scene.add(line);
     });
 
-    for (let z = -20; z > -390; z -= 20) {
-      [-10.2, 10.2].forEach((lx) => {
-        const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 8), whiteLineMat);
-        dash.rotation.x = -Math.PI / 2;
-        dash.position.set(lx, 0.04, z);
-        scene.add(dash);
-      });
-    }
-
-    // --- SEGMENT 2: COASTAL PORT BYPASS (WESTBOUND: Z = -420, X = +30 to -550) ---
-    const seg2Shoulder = new THREE.Mesh(new THREE.PlaneGeometry(590, 48), shoulderMat);
+    // --- LEG 2: WESTBOUND COASTAL BYPASS (Z = -420, X = +25 to -545) ---
+    const seg2Shoulder = new THREE.Mesh(new THREE.PlaneGeometry(580, 48), shoulderMat);
     seg2Shoulder.rotation.x = -Math.PI / 2;
     seg2Shoulder.position.set(-260, 0.016, -420);
     scene.add(seg2Shoulder);
 
-    const seg2Asphalt = new THREE.Mesh(new THREE.PlaneGeometry(590, 42), asphaltMat);
+    const seg2Asphalt = new THREE.Mesh(new THREE.PlaneGeometry(580, 42), asphaltMat);
     seg2Asphalt.rotation.x = -Math.PI / 2;
     seg2Asphalt.position.set(-260, 0.022, -420);
     scene.add(seg2Asphalt);
 
     [-0.35, 0.35].forEach((yz) => {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(470, 0.25), yellowLineMat);
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(480, 0.25), yellowLineMat);
       line.rotation.x = -Math.PI / 2;
       line.position.set(-260, 0.042, -420 + yz);
       scene.add(line);
     });
 
-    for (let x = -40; x > -490; x -= 20) {
-      [-10.2, 10.2].forEach((lz) => {
-        const dash = new THREE.Mesh(new THREE.PlaneGeometry(8, 0.3), whiteLineMat);
-        dash.rotation.x = -Math.PI / 2;
-        dash.position.set(x, 0.042, -420 + lz);
-        scene.add(dash);
-      });
-    }
-
-    // --- SEGMENT 3: PORT TERMINAL APPROACH (NORTHBOUND: X = -520, Z = -395 to -860) ---
-    const seg3Shoulder = new THREE.Mesh(new THREE.PlaneGeometry(48, 460), shoulderMat);
+    // --- LEG 3: SOUTHBOUND PORT CORRIDOR (X = -520, Z = -445 to +55) ---
+    const seg3Shoulder = new THREE.Mesh(new THREE.PlaneGeometry(48, 500), shoulderMat);
     seg3Shoulder.rotation.x = -Math.PI / 2;
-    seg3Shoulder.position.set(-520, 0.015, -625);
+    seg3Shoulder.position.set(-520, 0.015, -195);
     scene.add(seg3Shoulder);
 
-    const seg3Asphalt = new THREE.Mesh(new THREE.PlaneGeometry(42, 460), asphaltMat);
+    const seg3Asphalt = new THREE.Mesh(new THREE.PlaneGeometry(42, 500), asphaltMat);
     seg3Asphalt.rotation.x = -Math.PI / 2;
-    seg3Asphalt.position.set(-520, 0.02, -625);
+    seg3Asphalt.position.set(-520, 0.02, -195);
     scene.add(seg3Asphalt);
 
     [-0.35, 0.35].forEach((yx) => {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 330), yellowLineMat);
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 420), yellowLineMat);
       line.rotation.x = -Math.PI / 2;
-      line.position.set(-520 + yx, 0.04, -615);
+      line.position.set(-520 + yx, 0.04, -195);
       scene.add(line);
     });
 
-    for (let z = -460; z > -770; z -= 20) {
-      [-10.2, 10.2].forEach((lx) => {
-        const dash = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 8), whiteLineMat);
-        dash.rotation.x = -Math.PI / 2;
-        dash.position.set(-520 + lx, 0.04, z);
-        scene.add(dash);
-      });
-    }
+    // --- LEG 4: EASTBOUND DEPOT RETURN CONNECTOR (Z = +30, X = -545 to +25) ---
+    const seg4Shoulder = new THREE.Mesh(new THREE.PlaneGeometry(580, 48), shoulderMat);
+    seg4Shoulder.rotation.x = -Math.PI / 2;
+    seg4Shoulder.position.set(-260, 0.016, 30);
+    scene.add(seg4Shoulder);
 
-    // Subtle Ground Turn Chevrons at Junction 1 (0, -420) & Junction 2 (-520, -420)
-    for (let i = 0; i < 4; i++) {
-      const guide1 = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 2.5), cyanGuideMat);
-      guide1.rotation.x = -Math.PI / 2;
-      guide1.position.set(8 - i * 6, 0.055, -395 - i * 4.5);
-      scene.add(guide1);
+    const seg4Asphalt = new THREE.Mesh(new THREE.PlaneGeometry(580, 42), asphaltMat);
+    seg4Asphalt.rotation.x = -Math.PI / 2;
+    seg4Asphalt.position.set(-260, 0.022, 30);
+    scene.add(seg4Asphalt);
 
-      const guide2 = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 2.5), cyanGuideMat);
-      guide2.rotation.x = -Math.PI / 2;
-      guide2.position.set(-495 - i * 5, 0.055, -412 - i * 6);
-      scene.add(guide2);
-    }
+    [-0.35, 0.35].forEach((yz) => {
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(480, 0.25), yellowLineMat);
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(-260, 0.042, 30 + yz);
+      scene.add(line);
+    });
+
+    // Davao Port Terminal Gate-In Complex (Along Leg 3 at X = -520, Z = -200)
+    const portYard = new THREE.Mesh(new THREE.PlaneGeometry(95, 110), asphaltMat);
+    portYard.rotation.x = -Math.PI / 2;
+    portYard.position.set(-565, 0.025, -200);
+    scene.add(portYard);
+
+    const craneMat = new THREE.MeshLambertMaterial({ color: 0xeab308 });
+    [-24, 24].forEach((cz) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(2.4, 34, 2.4), craneMat);
+      leg.position.set(-565, 17, -200 + cz);
+      scene.add(leg);
+    });
+    const craneBeam = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.6, 56), craneMat);
+    craneBeam.position.set(-565, 33, -200);
+    scene.add(craneBeam);
 
     // ==========================================
     // 3. TRAFFIC LIGHT GANTRIES AT INTERSECTIONS
@@ -336,7 +291,7 @@ const TruckHaul3D = ({
     const boxMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
     const trafficLights = [];
 
-    const createGantry = (x, z, rotY, stopX, stopZ, axis, dir, cycleOffset, label) => {
+    const createGantry = (x, z, rotY, stopX, stopZ, legIndex, cycleOffset, label) => {
       const gantryGroup = new THREE.Group();
       gantryGroup.position.set(x, 0, z);
       gantryGroup.rotation.y = rotY;
@@ -389,30 +344,26 @@ const TruckHaul3D = ({
 
       trafficLights.push({
         label,
-        axis, // 'Z' or 'X'
-        dir,  // -1
+        legIndex,
         stopX,
         stopZ,
         cycleOffset,
         state: 'GREEN',
-        violated: false,
         redBulbs,
         yellowBulbs,
         greenBulbs
       });
     };
 
-    // Signal 1: Mid-Segment 1 Crosswalk Signal (Z = -210)
-    createGantry(22, -225, 0, 10.2, -192, 'Z', -1, 0.0, 'MIDWAY CROSSING');
-    // Signal 2: Junction 1 Left Turn Signal (Z = -420)
-    createGantry(22, -438, 0, 10.2, -396, 'Z', -1, 5.5, 'COASTAL BYPASS JCT');
-    // Signal 3: Junction 2 Right Turn Signal (X = -520, Z = -420, facing Westbound traffic)
-    createGantry(-538, -442, Math.PI / 2, -496, -409.8, 'X', -1, 11.0, 'PORT APPROACH JCT');
+    // Signal 1: Mid-Highway Crossing on Leg 0 (Northbound)
+    createGantry(22, -195, 0, 10.0, -175, 0, 0.0, 'MIDWAY INDUSTRIAL CROSSING');
+    // Signal 2: Coastal Bypass Intersection on Leg 0 (Before Left Turn)
+    createGantry(22, -405, 0, 10.0, -378, 0, 6.0, 'COASTAL BYPASS JUNCTION');
+    // Signal 3: Port Terminal Approach Signal on Leg 2 (Before Left Turn into Port Corridor)
+    createGantry(-505, -442, Math.PI / 2, -478, -410.0, 2, 12.0, 'PORT TERMINAL GATEWAY');
 
     // ==========================================
-    // 4. DELIVERABLE 5: BALANCED SCENERY
-    // LEFT OF ROAD: Coastal Trees & Green Verge
-    // RIGHT OF ROAD: Industrial Warehouses, Brick Depots & Logistics Buildings
+    // 4. BALANCED SCENERY: GREEN BUFFER VERGE & INDUSTRIAL WAREHOUSES
     // ==========================================
     const treeFoliageMat = new THREE.MeshLambertMaterial({ color: 0x1e4620 });
     const treeFoliageAltMat = new THREE.MeshLambertMaterial({ color: 0x2d5a27 });
@@ -461,77 +412,36 @@ const TruckHaul3D = ({
       scene.add(bldgGroup);
     };
 
-    // Segment 1 Scenery (Z = -40 to -370): Left is X = -36 (Trees), Right is X = +38 (Industrial Depots)
     let sceneryIdx = 0;
-    for (let z = -45; z > -375; z -= 48) {
+    for (let z = -35; z > -365; z -= 52) {
       spawnTreeCluster(-34, z);
-      spawnTreeCluster(-45, z - 18);
-      spawnIndustrialDepot(40, z, 0, sceneryIdx++);
+      spawnTreeCluster(-46, z - 18);
+      spawnIndustrialDepot(42, z, 0, sceneryIdx++);
     }
 
-    // Segment 2 Scenery (Westbound X = -55 to -465 along Z = -420):
-    // Travelling -X: Driver's LEFT is South (Z = -384, Coastal Trees), Driver's RIGHT is North (Z = -460, Depots)
-    const coastalVergeStrip = new THREE.Mesh(new THREE.PlaneGeometry(520, 40), coastalVergeMat);
+    const coastalVergeStrip = new THREE.Mesh(new THREE.PlaneGeometry(460, 40), coastalVergeMat);
     coastalVergeStrip.rotation.x = -Math.PI / 2;
     coastalVergeStrip.position.set(-260, 0.005, -375);
     scene.add(coastalVergeStrip);
 
-    for (let x = -55; x > -465; x -= 48) {
-      spawnTreeCluster(x, -384);
-      spawnTreeCluster(x - 16, -370);
+    for (let x = -55; x > -455; x -= 52) {
+      spawnTreeCluster(x, -382);
+      spawnTreeCluster(x - 16, -368);
       spawnIndustrialDepot(x, -462, Math.PI / 2, sceneryIdx++);
     }
 
-    // Segment 3 Scenery (Northbound X = -520, Z = -475 to -750):
-    // Driver's LEFT is West (X = -555, Trees), Driver's RIGHT is East (X = -480, Depots)
-    for (let z = -475; z > -750; z -= 48) {
-      spawnTreeCluster(-555, z);
-      spawnTreeCluster(-568, z - 16);
-      spawnIndustrialDepot(-480, z, 0, sceneryIdx++);
+    for (let z = -355; z < -35; z += 56) {
+      spawnTreeCluster(-482, z);
+      if (Math.abs(z - -200) > 70) {
+        spawnIndustrialDepot(-562, z, 0, sceneryIdx++);
+      }
     }
 
     // ==========================================
-    // 5. DAVAO PORT TERMINAL DROP-OFF YARD (AT X = -520, Z = -820)
-    // ==========================================
-    const portCenterX = -520;
-    const portCenterZ = -820;
-
-    const portYard = new THREE.Mesh(new THREE.PlaneGeometry(110, 100), asphaltMat);
-    portYard.rotation.x = -Math.PI / 2;
-    portYard.position.set(portCenterX, 0.03, portCenterZ);
-    scene.add(portYard);
-
-    const dropZoneGroup = new THREE.Group();
-    dropZoneGroup.position.set(portCenterX + 8, 0.06, portCenterZ);
-    [
-      { x: -4.2, z: 0, w: 0.45, l: 26 },
-      { x: 4.2, z: 0, w: 0.45, l: 26 },
-      { x: 0, z: -13, w: 8.8, l: 0.45 },
-      { x: 0, z: 13, w: 8.8, l: 0.45 }
-    ].forEach((b) => {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(b.w, b.l), yellowLineMat);
-      line.rotation.x = -Math.PI / 2;
-      line.position.set(b.x, 0, b.z);
-      dropZoneGroup.add(line);
-    });
-    scene.add(dropZoneGroup);
-
-    // Port Gantry Crane
-    const craneMat = new THREE.MeshLambertMaterial({ color: 0xeab308 });
-    [-22, 22].forEach((cx) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(2.4, 34, 2.4), craneMat);
-      leg.position.set(portCenterX + 8 + cx, 17, portCenterZ - 28);
-      scene.add(leg);
-    });
-    const craneBeam = new THREE.Mesh(new THREE.BoxGeometry(52, 2.6, 3.2), craneMat);
-    craneBeam.position.set(portCenterX + 8, 33, portCenterZ - 28);
-    scene.add(craneBeam);
-
-    // ==========================================
-    // 6. ARTICULATED TRACTOR CAB (WITH AMBER BLINKER LIGHTS) & BLUE TRAILER
+    // 5. ARTICULATED TRACTOR CAB & BLUE REEFER TRAILER
     // ==========================================
     const cabGroup = new THREE.Group();
-    cabGroup.position.set(7, 0, 22);
+    cabGroup.position.set(10, 0, 10);
     const cabTiltGroup = new THREE.Group();
     cabGroup.add(cabTiltGroup);
     scene.add(cabGroup);
@@ -561,12 +471,11 @@ const TruckHaul3D = ({
     windshield.position.set(0, 4.1, -4.05);
     cabTiltGroup.add(windshield);
 
-    // Deliverable 2: Physical Amber Turn Signal Meshes & PointLights on Cab Corners
+    // Physical Amber Turn Signal LEDs on Cab & Trailer
     const leftBlinkerMat = new THREE.MeshBasicMaterial({ color: 0x332200 });
     const rightBlinkerMat = new THREE.MeshBasicMaterial({ color: 0x332200 });
     const blinkerGeo = new THREE.BoxGeometry(0.45, 0.35, 0.45);
 
-    // Front & Rear Left Cab Blinkers
     const flBlinker = new THREE.Mesh(blinkerGeo, leftBlinkerMat);
     flBlinker.position.set(-1.92, 2.3, -4.05);
     cabTiltGroup.add(flBlinker);
@@ -579,7 +488,6 @@ const TruckHaul3D = ({
     leftBlinkerLight.position.set(-2.3, 2.4, -3.8);
     cabTiltGroup.add(leftBlinkerLight);
 
-    // Front & Rear Right Cab Blinkers
     const frBlinker = new THREE.Mesh(blinkerGeo, rightBlinkerMat);
     frBlinker.position.set(1.92, 2.3, -4.05);
     cabTiltGroup.add(frBlinker);
@@ -609,9 +517,9 @@ const TruckHaul3D = ({
       cabTiltGroup.add(rw);
     });
 
-    // BLUE REFRIGERATED TRAILER
+    // BLUE REFRIGERATED TRAILER (Pre-Hitched for Digital Twin Operation)
     const trailerGroup = new THREE.Group();
-    trailerGroup.position.set(7, 0, 44);
+    trailerGroup.position.set(10, 0, 12.4);
     const trailerTiltGroup = new THREE.Group();
     trailerGroup.add(trailerTiltGroup);
     scene.add(trailerGroup);
@@ -624,7 +532,6 @@ const TruckHaul3D = ({
     reeferUnit.position.set(0, 4.2, -0.8);
     trailerTiltGroup.add(reeferUnit);
 
-    // Trailer rear corner blinkers
     const tlTrailerBlinker = new THREE.Mesh(blinkerGeo, leftBlinkerMat);
     tlTrailerBlinker.position.set(-2.1, 2.0, 16.95);
     trailerTiltGroup.add(tlTrailerBlinker);
@@ -641,53 +548,14 @@ const TruckHaul3D = ({
       });
     });
 
-    // Blue Hitch Target Ring
-    const hitchRing = new THREE.Mesh(
-      new THREE.RingGeometry(1.7, 2.4, 24),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide })
-    );
-    hitchRing.rotation.x = -Math.PI / 2;
-    hitchRing.position.set(7, 0.12, 44);
-    scene.add(hitchRing);
-
-    // ==========================================
-    // 7. AMBIENT TRAFFIC CARS ALONG ROUTE SEGMENTS & RAIN
-    // ==========================================
-    const trafficCars = [];
-    const carColors = [0xd97706, 0x059669, 0x2563eb, 0xdc2626, 0x7c3aed];
-
-    // Segment 1 Cars (along Z)
-    [
-      { x: -12, z: -120, vz: 22, vx: 0, minZ: -390, maxZ: -30, rotY: 0 },
-      { x: 14, z: -250, vz: -15, vx: 0, minZ: -390, maxZ: -30, rotY: 0 },
-      // Segment 2 Cars (along X at Z = -420)
-      { x: -150, z: -432, vz: 0, vx: -16, minX: -480, maxX: -40, rotY: Math.PI / 2 },
-      { x: -330, z: -408, vz: 0, vx: 22, minX: -480, maxX: -40, rotY: -Math.PI / 2 },
-      // Segment 3 Cars (along Z at X = -520)
-      { x: -532, z: -560, vz: 20, vx: 0, minZ: -770, maxZ: -460, rotY: 0 },
-      { x: -506, z: -640, vz: -14, vx: 0, minZ: -770, maxZ: -460, rotY: 0 }
-    ].forEach((cfg, i) => {
-      const car = new THREE.Group();
-      car.position.set(cfg.x, 0, cfg.z);
-      car.rotation.y = cfg.rotY;
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(3.2, 2.2, 7.2),
-        new THREE.MeshLambertMaterial({ color: carColors[i % carColors.length] })
-      );
-      body.position.y = 1.4;
-      car.add(body);
-      scene.add(car);
-      trafficCars.push({ mesh: car, ...cfg, cooldown: 0 });
-    });
-
     // Rain Particles
-    const rainCount = 1600;
+    const rainCount = 1500;
     const rainGeo = new THREE.BufferGeometry();
     const rainPositions = new Float32Array(rainCount * 3);
     for (let i = 0; i < rainCount * 3; i += 3) {
-      rainPositions[i] = (Math.random() - 0.5) * 150;
-      rainPositions[i + 1] = Math.random() * 50;
-      rainPositions[i + 2] = (Math.random() - 0.5) * 150;
+      rainPositions[i] = (Math.random() - 0.5) * 160;
+      rainPositions[i + 1] = Math.random() * 55;
+      rainPositions[i + 2] = (Math.random() - 0.5) * 160;
     }
     rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
     const rainMat = new THREE.PointsMaterial({
@@ -700,36 +568,235 @@ const TruckHaul3D = ({
     scene.add(rainSystem);
 
     // ==========================================
-    // 8. KEYBOARD (WITH [Q]/[E] BLINKERS) & ORBIT CAMERA CONTROLS
+    // 5B. DPWH OVERHEAD GANTRY, AMBIENT PHILIPPINE TRAFFIC & WEATHER PEDESTRIANS
     // ==========================================
-    const onKeyDown = (e) => {
-      const k = e.key.toLowerCase();
-      if (k === 'w' || e.key === 'ArrowUp') keysRef.current.w = true;
-      if (k === 's' || e.key === 'ArrowDown') keysRef.current.s = true;
-      if (k === 'a' || e.key === 'ArrowLeft') keysRef.current.a = true;
-      if (k === 'd' || e.key === 'ArrowRight') keysRef.current.d = true;
-      if (e.code === 'Space' || e.key === ' ') {
-        e.preventDefault();
-        keysRef.current.space = true;
-      }
-      if (k === 'h') forceHitchRef.current = true;
+    // 1. DPWH Overhead Highway Signage Gantry (60m before Coastal Bypass Intersection at Z = -340)
+    const dpwhGroup = new THREE.Group();
+    dpwhGroup.position.set(0, 0, -340);
 
-      // Deliverable 2: [Q] Left Turn Signal / [E] Right Turn Signal
-      if (k === 'q' && !e.repeat) {
-        simRef.current.blinker = simRef.current.blinker === 'LEFT' ? 'OFF' : 'LEFT';
-      }
-      if (k === 'e' && !e.repeat) {
-        simRef.current.blinker = simRef.current.blinker === 'RIGHT' ? 'OFF' : 'RIGHT';
-      }
+    [-22, 22].forEach((px) => {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 16, 10), poleMat);
+      post.position.set(px, 8, 0);
+      dpwhGroup.add(post);
+    });
+
+    const trussBeam = new THREE.Mesh(new THREE.BoxGeometry(45, 0.8, 0.8), poleMat);
+    trussBeam.position.set(0, 15.2, 0);
+    dpwhGroup.add(trussBeam);
+
+    // Canvas Texture for DPWH Directional Board
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 1024;
+    signCanvas.height = 192;
+    const sCtx = signCanvas.getContext('2d');
+    sCtx.fillStyle = '#0f5132'; // DPWH Highway Green
+    sCtx.fillRect(0, 0, 1024, 192);
+    sCtx.strokeStyle = '#ffffff';
+    sCtx.lineWidth = 8;
+    sCtx.strokeRect(10, 10, 1004, 172);
+    sCtx.fillStyle = '#ffffff';
+    sCtx.font = 'bold 38px monospace';
+    sCtx.textAlign = 'center';
+    sCtx.textBaseline = 'middle';
+    sCtx.fillText('[ ⮌ CENTRAL COLD STORAGE | DAVAO PORT TERMINAL ➔ ]', 512, 96);
+
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    const signBoard = new THREE.Mesh(
+      new THREE.BoxGeometry(32, 4.6, 0.4),
+      new THREE.MeshBasicMaterial({ map: signTex })
+    );
+    signBoard.position.set(0, 13.8, 0);
+    dpwhGroup.add(signBoard);
+    scene.add(dpwhGroup);
+
+    // 2. Low-Poly Philippine Ambient Traffic (Oncoming Lanes + Red-Light Stopping)
+    const ambientVehicles = [];
+
+    // 2A. Philippine Stainless Jeepney (Oncoming Southbound on Leg 1: X = -10, moving +Z)
+    const jeepneyGroup = new THREE.Group();
+    const stainlessMat = new THREE.MeshLambertMaterial({ color: 0xd1d5db });
+    const fiestaRedMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const fiestaYellowMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const jeepBody = new THREE.Mesh(new THREE.BoxGeometry(3.1, 2.5, 8.2), stainlessMat);
+    jeepBody.position.y = 1.6;
+    jeepneyGroup.add(jeepBody);
+    const jeepHood = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.5, 2.2), stainlessMat);
+    jeepHood.position.set(0, 1.2, 4.8);
+    jeepneyGroup.add(jeepHood);
+    const stripeL = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.3, 8.3), fiestaRedMat);
+    stripeL.position.set(0, 2.3, 0);
+    jeepneyGroup.add(stripeL);
+    const jeepRoof = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.25, 7.6), fiestaYellowMat);
+    jeepRoof.position.set(0, 2.95, -0.2);
+    jeepneyGroup.add(jeepRoof);
+    jeepneyGroup.position.set(-10, 0, -340);
+    scene.add(jeepneyGroup);
+    ambientVehicles.push({
+      mesh: jeepneyGroup,
+      axis: 'Z',
+      dir: 1, // Moving +Z (Southbound in X = -10 RHS lane)
+      baseSpeed: 22,
+      minBound: -390,
+      maxBound: 10,
+      stopCoord: -205, // Stops before Midway Crossing when trafficLights[0] is RED
+      lightIdx: 0
+    });
+
+    // 2B. White Ambulance with Red/Blue Flashing Beacons (Oncoming Eastbound on Leg 2: Z = -410, moving +X)
+    const ambGroup = new THREE.Group();
+    const ambBody = new THREE.Mesh(
+      new THREE.BoxGeometry(3.2, 3.2, 7.6),
+      new THREE.MeshLambertMaterial({ color: 0xffffff })
+    );
+    ambBody.position.y = 2.0;
+    ambGroup.add(ambBody);
+    const ambCross = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.45, 2.4), fiestaRedMat);
+    ambCross.position.set(0, 2.2, 0);
+    ambGroup.add(ambCross);
+    const redBeaconMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const blueBeaconMat = new THREE.MeshBasicMaterial({ color: 0x0088ff });
+    const redBeacon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.45), redBeaconMat);
+    redBeacon.position.set(-0.7, 3.75, 2.8);
+    ambGroup.add(redBeacon);
+    const blueBeacon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.45), blueBeaconMat);
+    blueBeacon.position.set(0.7, 3.75, 2.8);
+    ambGroup.add(blueBeacon);
+    ambGroup.rotation.y = Math.PI / 2;
+    ambGroup.position.set(-380, 0, -410);
+    scene.add(ambGroup);
+    ambientVehicles.push({
+      mesh: ambGroup,
+      axis: 'X',
+      dir: 1, // Moving +X (Eastbound in Z = -410 RHS lane)
+      baseSpeed: 26,
+      minBound: -490,
+      maxBound: -25,
+      stopCoord: -55,
+      lightIdx: 1,
+      isAmbulance: true,
+      redBeaconMat,
+      blueBeaconMat
+    });
+
+    // 2C. 2 Commuter Sedans in Oncoming Lanes
+    const sedanColors = [0x0284c7, 0x10b981];
+    [
+      { x: -10, z: -110, axis: 'Z', dir: 1, minBound: -390, maxBound: 10, stopCoord: -205, lightIdx: 0, rotY: 0 },
+      { x: -530, z: -310, axis: 'Z', dir: -1, minBound: -390, maxBound: 5, stopCoord: -365, lightIdx: 2, rotY: Math.PI }
+    ].forEach((cfg, idx) => {
+      const sedan = new THREE.Group();
+      const sBody = new THREE.Mesh(
+        new THREE.BoxGeometry(2.9, 1.4, 6.2),
+        new THREE.MeshLambertMaterial({ color: sedanColors[idx] })
+      );
+      sBody.position.y = 1.1;
+      sedan.add(sBody);
+      const sCabin = new THREE.Mesh(
+        new THREE.BoxGeometry(2.5, 1.1, 3.2),
+        new THREE.MeshLambertMaterial({ color: 0x1e293b })
+      );
+      sCabin.position.set(0, 2.1, -0.3);
+      sedan.add(sCabin);
+      sedan.position.set(cfg.x, 0, cfg.z);
+      sedan.rotation.y = cfg.rotY;
+      scene.add(sedan);
+      ambientVehicles.push({
+        mesh: sedan,
+        ...cfg,
+        baseSpeed: 24
+      });
+    });
+
+    // 3. Weather-Reactive Pedestrians ("Fade in Rain")
+    const pedestrianMaterials = [];
+    const pedestrians = [];
+    const pedConfigs = [
+      { x: 24, baseZ: 38, walkRange: 14, speed: 1.8, phase: 0.0 },
+      { x: -16, baseZ: 48, walkRange: 10, speed: 1.5, phase: 1.3 },
+      { x: 24, baseZ: -95, walkRange: 18, speed: 2.0, phase: 2.1 },
+      { x: 24, baseZ: -250, walkRange: 16, speed: 1.7, phase: 3.4 },
+      { x: -24, baseZ: -170, walkRange: 15, speed: 1.6, phase: 0.8 }
+    ];
+    const shirtPalette = [0x38bdf8, 0xfacc15, 0x2ecc71, 0xf97316, 0xa855f7];
+
+    pedConfigs.forEach((pc, idx) => {
+      const pedGroup = new THREE.Group();
+      const torsoMat = new THREE.MeshLambertMaterial({
+        color: shirtPalette[idx % shirtPalette.length],
+        transparent: true,
+        opacity: isCyc || isDet ? 0.0 : 1.0
+      });
+      const headMat = new THREE.MeshLambertMaterial({
+        color: 0xfde047,
+        transparent: true,
+        opacity: isCyc || isDet ? 0.0 : 1.0
+      });
+      pedestrianMaterials.push(torsoMat, headMat);
+
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 1.7, 8), torsoMat);
+      torso.position.y = 1.15;
+      pedGroup.add(torso);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 8), headMat);
+      head.position.y = 2.35;
+      pedGroup.add(head);
+
+      pedGroup.position.set(pc.x, 0, pc.baseZ);
+      pedGroup.visible = !(isCyc || isDet);
+      scene.add(pedGroup);
+      pedestrians.push({ group: pedGroup, ...pc });
+    });
+    let pedOpacity = isCyc || isDet ? 0.0 : 1.0;
+
+    // ==========================================
+    // 6. CLOSED-CIRCUIT AUTONOMOUS WAYPOINT GRAPH (PHILIPPINE RHS TRAFFIC)
+    // ==========================================
+    // Every segment and 90° left turn sweeps cleanly across the intersection into the
+    // outer Right-Hand Side (RHS) lane relative to the double yellow centerline:
+    // - Leg 1 Northbound (-Z): X = +10 (East of X = 0 centerline)
+    // - Leg 2 Westbound (-X):  Z = -430 (North of Z = -420 centerline)
+    // - Leg 3 Southbound (+Z): X = -530 (West of X = -520 centerline)
+    // - Leg 4 Eastbound (+X):  Z = +40 (South of Z = +30 centerline)
+    const waypoints = [
+      { x: 10, z: -395, leg: 0, turnAfter: 'LEFT', label: 'NORTHBOUND INDUSTRIAL CORRIDOR (RHS)' },
+      { x: -18, z: -430, leg: 1, turnAfter: 'OFF', label: 'JUNCTION 1: SWEEPING LEFT INTO NORTHERN RHS LANE' },
+      { x: -495, z: -430, leg: 2, turnAfter: 'LEFT', label: 'WESTBOUND COASTAL PORT BYPASS (RHS)' },
+      { x: -530, z: -392, leg: 3, turnAfter: 'OFF', label: 'JUNCTION 2: SWEEPING LEFT TO PORT APPROACH (RHS)' },
+      { x: -530, z: 5, leg: 4, turnAfter: 'LEFT', label: 'DAVAO PORT TERMINAL GATEWAY CORRIDOR (RHS)' },
+      { x: -492, z: 40, leg: 5, turnAfter: 'OFF', label: 'SOUTH TERMINAL RHS TURNAROUND' },
+      { x: -18, z: 40, leg: 6, turnAfter: 'LEFT', label: 'EASTBOUND DEPOT CONNECTOR (RHS)' },
+      { x: 10, z: 5, leg: 7, turnAfter: 'OFF', label: 'ORIGIN COLD STORAGE APPROACH (RHS)' }
+    ];
+
+    const autoState = {
+      wpIndex: 0,
+      speedKmh: 35,
+      targetSpeedKmh: 35,
+      cabHeading: 0,
+      trailerHeading: 0,
+      steerAngleDeg: 0,
+      rollAngleDeg: 0,
+      blinker: 'OFF',
+      lapCount: 1,
+      cutoffTimer: Math.max(0, Number(remainingSeconds) || 1420)
     };
 
-    const onKeyUp = (e) => {
-      const k = e.key.toLowerCase();
-      if (k === 'w' || e.key === 'ArrowUp') keysRef.current.w = false;
-      if (k === 's' || e.key === 'ArrowDown') keysRef.current.s = false;
-      if (k === 'a' || e.key === 'ArrowLeft') keysRef.current.a = false;
-      if (k === 'd' || e.key === 'ArrowRight') keysRef.current.d = false;
-      if (e.code === 'Space' || e.key === ' ') keysRef.current.space = false;
+    // Normalize angle difference to [-PI, PI]
+    const normalizeAngle = (angle) => {
+      let a = angle;
+      while (a > Math.PI) a -= Math.PI * 2;
+      while (a < -Math.PI) a += Math.PI * 2;
+      return a;
+    };
+
+    // ==========================================
+    // 7. CAMERA HOTKEYS ([1]-[4]) & RIGHT-CLICK ORBIT CONTROLS
+    // ==========================================
+    const onKeyDown = (e) => {
+      if (e.key === '1') switchCameraMode(1);
+      if (e.key === '2') switchCameraMode(2);
+      if (e.key === '3') switchCameraMode(3);
+      if (e.key === '4') switchCameraMode(4);
     };
 
     const onContextMenu = (e) => e.preventDefault();
@@ -748,8 +815,8 @@ const TruckHaul3D = ({
       camOrbitRef.current.lastY = e.clientY;
       camOrbitRef.current.yawOffset -= dx * 0.007;
       camOrbitRef.current.pitchOffset = Math.max(
-        -5,
-        Math.min(18, camOrbitRef.current.pitchOffset + dy * 0.08)
+        -4,
+        Math.min(22, camOrbitRef.current.pitchOffset + dy * 0.08)
       );
     };
     const onMouseUp = (e) => {
@@ -758,7 +825,7 @@ const TruckHaul3D = ({
     const onWheel = (e) => {
       camOrbitRef.current.zoomDist = Math.max(
         14,
-        Math.min(48, camOrbitRef.current.zoomDist + e.deltaY * 0.025)
+        Math.min(55, camOrbitRef.current.zoomDist + e.deltaY * 0.025)
       );
     };
 
@@ -768,7 +835,6 @@ const TruckHaul3D = ({
     window.addEventListener('mouseup', onMouseUp);
     container.addEventListener('wheel', onWheel, { passive: true });
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
 
     const onResize = () => {
       if (!container) return;
@@ -779,29 +845,31 @@ const TruckHaul3D = ({
     window.addEventListener('resize', onResize);
 
     // ==========================================
-    // 9. 60FPS PHYSICS, TURN SIGNAL ENFORCEMENT & RENDER LOOP
+    // 8. 60FPS AUTONOMOUS KINEMATICS & DIGITAL TWIN LOOP
     // ==========================================
     const clock = new THREE.Clock();
     let animId;
-    let hudTimer = 0;
+    let hudAccum = 0;
+    let simElapsed = 0;
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      const dt = Math.min(clock.getDelta(), 0.05);
-      const elapsed = clock.getElapsedTime();
-      const s = simRef.current;
+      const rawDt = Math.min(clock.getDelta(), 0.05);
+      const dt = rawDt * simSpeedRef.current;
+      simElapsed += dt;
+      autoState.cutoffTimer = Math.max(0, autoState.cutoffTimer - dt);
 
-      // Live Weather Lerp
+      // 1. Live Weather Sky, Fog & Rain Sync
       const curW = weatherRef.current;
       const cyc = curW === 'CYCLONE IMMINENT';
       const det = curW === 'DETERIORATING';
       const targetSky = cyc ? 0x1a2634 : det ? 0x4a5d6e : 0x74b9ff;
-      scene.background.lerp(new THREE.Color(targetSky), dt * 1.8);
-      scene.fog.color.lerp(new THREE.Color(targetSky), dt * 1.8);
+      scene.background.lerp(new THREE.Color(targetSky), rawDt * 1.8);
+      scene.fog.color.lerp(new THREE.Color(targetSky), rawDt * 1.8);
       rainMat.opacity = THREE.MathUtils.lerp(
         rainMat.opacity,
         cyc ? 0.65 : det ? 0.35 : 0.0,
-        dt * 2.0
+        rawDt * 2.0
       );
 
       if (rainMat.opacity > 0.01) {
@@ -809,34 +877,17 @@ const TruckHaul3D = ({
         const rPos = rainSystem.geometry.attributes.position;
         for (let i = 1; i < rPos.count * 3; i += 3) {
           rPos.array[i] -= 50 * dt;
-          if (rPos.array[i] < 0) rPos.array[i] = 50;
+          if (rPos.array[i] < 0) rPos.array[i] = 55;
         }
         rPos.needsUpdate = true;
       }
 
-      // Pulse Hitch Target Ring in HITCH stage
-      if (!s.isHitched && hitchRing.visible) {
-        const pulseScale = 1 + Math.sin(elapsed * 5) * 0.08;
-        hitchRing.scale.set(pulseScale, pulseScale, 1);
-      }
-
-      // Deliverable 2: 2Hz Turn Signal Blinker Flash on Cab & Trailer Meshes + PointLights
-      const blinkWave = Math.floor(elapsed * 4) % 2 === 0;
-      const leftActive = s.blinker === 'LEFT' && blinkWave;
-      const rightActive = s.blinker === 'RIGHT' && blinkWave;
-
-      leftBlinkerMat.color.setHex(leftActive ? 0xf59e0b : 0x332200);
-      leftBlinkerLight.intensity = leftActive ? 2.2 : 0;
-
-      rightBlinkerMat.color.setHex(rightActive ? 0xf59e0b : 0x332200);
-      rightBlinkerLight.intensity = rightActive ? 2.2 : 0;
-
-      // Update Traffic Light Cycles (8s GREEN -> 3s YELLOW -> 7s RED)
+      // 2. Update Traffic Light Cycles (9s GREEN -> 3s YELLOW -> 6s RED)
       trafficLights.forEach((tl) => {
-        const cycleTime = (elapsed + tl.cycleOffset) % 18;
-        if (cycleTime < 8) {
+        const cycleTime = (simElapsed + tl.cycleOffset) % 18;
+        if (cycleTime < 9) {
           tl.state = 'GREEN';
-        } else if (cycleTime < 11) {
+        } else if (cycleTime < 12) {
           tl.state = 'YELLOW';
         } else {
           tl.state = 'RED';
@@ -851,425 +902,327 @@ const TruckHaul3D = ({
         tl.greenBulbs.forEach((m) => m.color.setHex(isG ? 0x2ecc71 : 0x052a10));
       });
 
-      if (!s.isCrashed && !s.isFinished) {
-        if (s.isHitched) {
-          s.timeLeft = Math.max(0, s.timeLeft - dt);
-          if (s.timeLeft <= 0) {
-            s.isCrashed = true;
-            setHud((prev) => ({
-              ...prev,
-              status: 'CRASHED',
-              timeLeft: 0,
-              failReason:
-                'PORT GATE SLOT EXPIRED (00:00)! The container vessel departed Davao Port without your shipment.'
-            }));
-          }
+      // 3. Waypoint Progression & Traffic Signal Stop-Line Detection
+      const targetWp = waypoints[autoState.wpIndex];
+      const dx = targetWp.x - cabGroup.position.x;
+      const dz = targetWp.z - cabGroup.position.z;
+      const distToWp = Math.hypot(dx, dz);
+
+      if (distToWp < 11) {
+        autoState.wpIndex = (autoState.wpIndex + 1) % waypoints.length;
+        if (autoState.wpIndex === 0) {
+          autoState.lapCount += 1;
         }
-        if (s.governorTimer > 0) s.governorTimer = Math.max(0, s.governorTimer - dt);
-        if (s.violationAlertTimer > 0) s.violationAlertTimer = Math.max(0, s.violationAlertTimer - dt);
-        if (s.turnViolationTimer > 0) s.turnViolationTimer = Math.max(0, s.turnViolationTimer - dt);
-        if (s.unsignaledPenaltyCooldown > 0) {
-          s.unsignaledPenaltyCooldown = Math.max(0, s.unsignaledPenaltyCooldown - dt);
-        }
-
-        const activeMaxSpeed = s.governorTimer > 0 ? 20 : s.maxSpeedCap;
-
-        // 1. THROTTLE, REVERSE & PNEUMATIC AIR BRAKES
-        if (keysRef.current.space) {
-          s.brakePressure = Math.min(100, s.brakePressure + 280 * dt);
-          s.throttle = THREE.MathUtils.lerp(s.throttle, 0, 5.0 * dt);
-          s.speed = THREE.MathUtils.lerp(s.speed, 0, 4.2 * dt);
-          s.rollAngle *= Math.pow(0.25, dt);
-        } else {
-          s.brakePressure = Math.max(0, s.brakePressure - 220 * dt);
-          if (keysRef.current.w) {
-            s.throttle = Math.min(activeMaxSpeed, s.throttle + 26 * dt);
-          } else if (keysRef.current.s) {
-            if (s.speed > 2) {
-              s.throttle = Math.max(0, s.throttle - 50 * dt);
-            } else {
-              s.throttle = Math.max(-18, s.throttle - 18 * dt);
-            }
-          } else {
-            s.throttle *= Math.pow(0.5, dt);
-          }
-          if (s.throttle > activeMaxSpeed) s.throttle = activeMaxSpeed;
-          s.speed += (s.throttle - s.speed) * 2.2 * dt;
-        }
-
-        // 2. STEERING & TRACTOR-TRAILER ARTICULATION
-        const steerRate = 65;
-        if (keysRef.current.a) {
-          s.steerAngle = Math.min(38, s.steerAngle + steerRate * dt);
-        } else if (keysRef.current.d) {
-          s.steerAngle = Math.max(-38, s.steerAngle - steerRate * dt);
-        } else {
-          s.steerAngle *= Math.pow(0.14, dt);
-        }
-
-        const wheelSteerRad = THREE.MathUtils.degToRad(s.steerAngle * 0.75);
-        frontLeftWheel.rotation.y = wheelSteerRad;
-        frontRightWheel.rotation.y = wheelSteerRad;
-
-        const moveStep = s.speed * 0.65 * dt;
-        const cabTurnRate = (s.steerAngle / 38) * (s.speed / 19) * 1.25;
-        s.cabHeading += cabTurnRate * dt;
-
-        // Deliverable 2: Turn Signal Auto-Cancel & Unsignaled Turn Penalty (> 15° heading change at intersections)
-        if (s.isHitched) {
-          if (Math.abs(s.steerAngle) > 10 && !s.turnActive) {
-            s.turnActive = true;
-            s.turnStartHeading = s.cabHeading;
-          }
-
-          if (s.turnActive) {
-            const headingDeltaDeg = THREE.MathUtils.radToDeg(s.cabHeading - s.turnStartHeading);
-
-            // Check if near Junction 1 (0, -420) or Junction 2 (-520, -420)
-            const distJct1 = Math.hypot(cabGroup.position.x - 0, cabGroup.position.z - -420);
-            const distJct2 = Math.hypot(cabGroup.position.x - -520, cabGroup.position.z - -420);
-            const inIntersectionZone = distJct1 < 55 || distJct2 < 55;
-
-            if (
-              inIntersectionZone &&
-              Math.abs(headingDeltaDeg) > 15 &&
-              s.unsignaledPenaltyCooldown <= 0
-            ) {
-              const requiredSignal = headingDeltaDeg > 0 ? 'LEFT' : 'RIGHT';
-              if (s.blinker !== requiredSignal) {
-                s.unsignaledPenaltyCooldown = 8.0;
-                s.turnViolationTimer = 4.2;
-                s.cameraShake = 1.1;
-                s.health = Math.max(0, s.health - 5);
-
-                if (s.health <= 0) {
-                  s.isCrashed = true;
-                  setHud((prev) => ({
-                    ...prev,
-                    status: 'CRASHED',
-                    health: 0,
-                    failReason: 'CARGO DESTROYED! Repeated unsignaled turns and road hazards ruined consignment integrity.'
-                  }));
-                }
-              }
-            }
-
-            // Auto-cancel blinker once steering returns to center (< 5°) after completing a turn
-            if (Math.abs(s.steerAngle) < 5) {
-              if (Math.abs(headingDeltaDeg) > 15) {
-                s.blinker = 'OFF';
-              }
-              s.turnActive = false;
-            }
-          }
-
-          // Clamp max cab-to-trailer articulation angle to 65 degrees
-          const maxArticulationRad = THREE.MathUtils.degToRad(65);
-          const diff = s.cabHeading - s.trailerHeading;
-          if (diff > maxArticulationRad) s.cabHeading = s.trailerHeading + maxArticulationRad;
-          if (diff < -maxArticulationRad) s.cabHeading = s.trailerHeading - maxArticulationRad;
-        }
-
-        cabGroup.position.x -= Math.sin(s.cabHeading) * moveStep;
-        cabGroup.position.z -= Math.cos(s.cabHeading) * moveStep;
-        cabGroup.rotation.y = s.cabHeading;
-
-        // 3. HITCHING & KINEMATIC TRAILER FOLLOW
-        if (!s.isHitched) {
-          const hitchWorldX = cabGroup.position.x + Math.sin(s.cabHeading) * 2.4;
-          const hitchWorldZ = cabGroup.position.z + Math.cos(s.cabHeading) * 2.4;
-          const distToTrailer = Math.hypot(hitchWorldX - 7, hitchWorldZ - 44);
-
-          if (distToTrailer < 3.8 || forceHitchRef.current) {
-            forceHitchRef.current = false;
-            s.isHitched = true;
-            s.speed = 0;
-            s.throttle = 0;
-            cabGroup.position.set(7, 0, 41.6);
-            s.cabHeading = 0;
-            s.trailerHeading = 0;
-            s.turnStartHeading = 0;
-            hitchRing.visible = false;
-          }
-        } else {
-          const fifthWheelX = cabGroup.position.x + Math.sin(s.cabHeading) * 2.4;
-          const fifthWheelZ = cabGroup.position.z + Math.cos(s.cabHeading) * 2.4;
-          trailerGroup.position.set(fifthWheelX, 0, fifthWheelZ);
-
-          const trailerWheelbase = 13.5;
-          const angleDiff = s.cabHeading - s.trailerHeading;
-          s.trailerHeading += (moveStep / trailerWheelbase) * Math.sin(angleDiff);
-          trailerGroup.rotation.y = s.trailerHeading;
-        }
-
-        // 4. CENTRIFUGAL ROLLOVER / TILT PHYSICS (38° Limit)
-        const wetRoadMultiplier = cyc ? 1.3 : det ? 1.15 : 1.0;
-        const targetRoll =
-          cabTurnRate * (Math.abs(s.speed) / 40) * 12 * s.weightFactor * wetRoadMultiplier;
-        s.rollAngle = THREE.MathUtils.lerp(s.rollAngle, targetRoll, 3.5 * dt);
-
-        cabTiltGroup.rotation.z = THREE.MathUtils.degToRad(s.rollAngle * 0.65);
-        trailerTiltGroup.rotation.z = THREE.MathUtils.degToRad(s.rollAngle);
-
-        if (Math.abs(s.rollAngle) >= ROLLOVER_LIMIT) {
-          s.isCrashed = true;
-          s.health = 0;
-          setHud((prev) => ({
-            ...prev,
-            status: 'CRASHED',
-            health: 0,
-            rollDeg: Math.round(Math.abs(s.rollAngle)),
-            failReason: 'TRAILER ROLLED OVER! Took a junction turn too fast for cargo weight.'
-          }));
-        }
-
-        // 5. RED LIGHT VIOLATIONS & TRAFFIC COLLISIONS
-        if (s.isHitched) {
-          trafficLights.forEach((tl) => {
-            if (tl.violated || tl.state !== 'RED' || s.speed <= 5) return;
-
-            let crossedStop = false;
-            if (tl.axis === 'Z') {
-              crossedStop =
-                Math.abs(cabGroup.position.x - tl.stopX) < 16 &&
-                cabGroup.position.z < tl.stopZ &&
-                cabGroup.position.z > tl.stopZ - 16;
-            } else {
-              crossedStop =
-                Math.abs(cabGroup.position.z - tl.stopZ) < 16 &&
-                cabGroup.position.x < tl.stopX &&
-                cabGroup.position.x > tl.stopX - 16;
-            }
-
-            if (crossedStop) {
-              tl.violated = true;
-              s.strikes += 1;
-              s.health = Math.max(0, s.health - 10);
-              s.governorTimer = 8.0;
-              s.violationAlertTimer = 4.5;
-              s.cameraShake = 1.5;
-
-              setCameraFlash(true);
-              setTimeout(() => setCameraFlash(false), 650);
-
-              if (s.strikes >= 3 || s.health <= 0) {
-                s.isCrashed = true;
-                setHud((prev) => ({
-                  ...prev,
-                  status: 'CRASHED',
-                  health: 0,
-                  strikes: s.strikes,
-                  failReason:
-                    s.strikes >= 3
-                      ? 'LICENSE REVOKED (3/3 RED LIGHT VIOLATIONS)! Port Authority terminated your freight contract.'
-                      : 'CARGO DESTROYED! Reckless intersection violations ruined consignment integrity.'
-                }));
-              }
-            }
-          });
-
-          // Update Ambient Traffic Cars
-          trafficCars.forEach((tc) => {
-            if (tc.cooldown > 0) tc.cooldown = Math.max(0, tc.cooldown - dt);
-
-            if (tc.vz !== 0) {
-              tc.mesh.position.z += tc.vz * dt;
-              if (tc.mesh.position.z > tc.maxZ) tc.mesh.position.z = tc.minZ;
-              if (tc.mesh.position.z < tc.minZ) tc.mesh.position.z = tc.maxZ;
-            }
-            if (tc.vx !== 0) {
-              tc.mesh.position.x += tc.vx * dt;
-              if (tc.mesh.position.x > tc.maxX) tc.mesh.position.x = tc.minX;
-              if (tc.mesh.position.x < tc.minX) tc.mesh.position.x = tc.maxX;
-            }
-
-            const dx = cabGroup.position.x - tc.mesh.position.x;
-            const dz = cabGroup.position.z - tc.mesh.position.z;
-            if (Math.abs(dx) < 3.6 && Math.abs(dz) < 5.5 && tc.cooldown <= 0) {
-              tc.cooldown = 1.5;
-              s.health = Math.max(0, s.health - 20);
-              s.speed = -8;
-              s.throttle = 0;
-              s.cameraShake = 1.8;
-              s.rollAngle += (dx >= 0 ? -1 : 1) * 16;
-
-              if (s.health <= 0) {
-                s.isCrashed = true;
-                setHud((prev) => ({
-                  ...prev,
-                  status: 'CRASHED',
-                  health: 0,
-                  failReason: 'HIGHWAY COLLISION! Cargo container damaged beyond export limits.'
-                }));
-              }
-            }
-          });
-
-          // Track Route Leg Progression & Check Port Drop-Off Zone (X = -512, Z = -820)
-          if (cabGroup.position.z < -390 && s.routeLeg === 1) {
-            s.routeLeg = 2;
-          }
-          if (cabGroup.position.x < -490 && s.routeLeg === 2) {
-            s.routeLeg = 3;
-          }
-
-          const distToDropZone = Math.hypot(
-            cabGroup.position.x - (portCenterX + 8),
-            cabGroup.position.z - portCenterZ
-          );
-          if (distToDropZone < 22) {
-            s.isFinished = true;
-            setHud((prev) => ({
-              ...prev,
-              status: 'DELIVERED',
-              stage: 'DELIVERED',
-              progress: 100,
-              health: Math.round(s.health)
-            }));
-          }
-        }
-      } else if (s.isCrashed) {
-        const flipTarget = s.rollAngle >= 0 ? 90 : -90;
-        s.rollAngle += (flipTarget - s.rollAngle) * 3.0 * dt;
-        cabTiltGroup.rotation.z = THREE.MathUtils.degToRad(s.rollAngle);
-        trailerTiltGroup.rotation.z = THREE.MathUtils.degToRad(s.rollAngle);
       }
 
-      // ==========================================
-      // 10. DELIVERABLE 6: HITCHING CAMERA ASSIST & CHASE CAMERA
-      // ==========================================
-      const orb = camOrbitRef.current;
-      const isReversingForHitch = !s.isHitched && (keysRef.current.s || s.speed < -0.5);
-      s.hitchCamBlend = THREE.MathUtils.lerp(
-        s.hitchCamBlend,
-        isReversingForHitch ? 1.0 : 0.0,
-        4.5 * dt
+      const activeWp = waypoints[autoState.wpIndex];
+      const toWpX = activeWp.x - cabGroup.position.x;
+      const toWpZ = activeWp.z - cabGroup.position.z;
+      const distToActiveWp = Math.hypot(toWpX, toWpZ);
+
+      // Detect upcoming traffic light on current leg
+      let upcomingLight = null;
+      let stopDist = Infinity;
+
+      trafficLights.forEach((tl) => {
+        if (tl.legIndex === autoState.wpIndex) {
+          // Calculate signed distance ahead of cab to the white stop line
+          const forwardX = -Math.sin(autoState.cabHeading);
+          const forwardZ = -Math.cos(autoState.cabHeading);
+          const relX = tl.stopX - cabGroup.position.x;
+          const relZ = tl.stopZ - cabGroup.position.z;
+          const projDist = relX * forwardX + relZ * forwardZ;
+
+          if (projDist > -2 && projDist < stopDist) {
+            stopDist = projDist;
+            upcomingLight = tl;
+          }
+        }
+      });
+
+      // Determine Target Cruising / Braking Speed
+      let desiredSpeed = 35; // ~35 km/h cruising speed
+      let navBanner = `AUTOPILOT: ${activeWp.label}`;
+
+      // Smoothly slow down to 22 km/h when entering a 90-degree intersection turn
+      if (activeWp.leg % 2 === 1 || distToActiveWp < 28) {
+        desiredSpeed = 23;
+      }
+
+      // Traffic Light Braking Logic
+      if (upcomingLight && (upcomingLight.state === 'RED' || upcomingLight.state === 'YELLOW')) {
+        if (stopDist > 1.5 && stopDist < 48) {
+          // Smooth proportional deceleration to stop cleanly at the white stop line
+          const decelFactor = Math.max(0, (stopDist - 4.5) / 38);
+          desiredSpeed = Math.min(desiredSpeed, decelFactor * 30);
+          if (stopDist < 7.5) desiredSpeed = 0;
+          navBanner = `SIGNAL HOLD: ${upcomingLight.state} AT ${upcomingLight.label} (${Math.max(
+            0,
+            Math.round(stopDist)
+          )}m)`;
+        }
+      }
+
+      // Smooth acceleration / deceleration
+      const accelRate = desiredSpeed < autoState.speedKmh ? 4.2 : 2.0;
+      autoState.speedKmh = THREE.MathUtils.lerp(autoState.speedKmh, desiredSpeed, accelRate * dt);
+      if (autoState.speedKmh < 0.3 && desiredSpeed === 0) autoState.speedKmh = 0;
+
+      // 4. Pure-Pursuit Steering & Kinematics
+      const desiredHeading = Math.atan2(-toWpX, -toWpZ);
+      const headingError = normalizeAngle(desiredHeading - autoState.cabHeading);
+
+      const targetSteerDeg = THREE.MathUtils.clamp(
+        THREE.MathUtils.radToDeg(headingError) * 1.15,
+        -34,
+        34
+      );
+      autoState.steerAngleDeg = THREE.MathUtils.lerp(
+        autoState.steerAngleDeg,
+        targetSteerDeg,
+        6.0 * dt
       );
 
-      const baseFollowAngle = s.isHitched
-        ? s.trailerHeading * 0.72 + s.cabHeading * 0.28
-        : s.cabHeading;
+      const wheelSteerRad = THREE.MathUtils.degToRad(autoState.steerAngleDeg * 0.75);
+      frontLeftWheel.rotation.y = wheelSteerRad;
+      frontRightWheel.rotation.y = wheelSteerRad;
 
-      const hitchAssistYaw = 0.52 * s.hitchCamBlend;
-      const totalCamAngle = baseFollowAngle + orb.yawOffset + hitchAssistYaw;
+      const moveStep = autoState.speedKmh * 0.62 * dt;
+      if (moveStep > 0.0001) {
+        const turnRate = (autoState.steerAngleDeg / 34) * (autoState.speedKmh / 20) * 1.12;
+        autoState.cabHeading = normalizeAngle(autoState.cabHeading + turnRate * dt);
 
-      const normalCamDist = orb.zoomDist + (s.isHitched ? 4 : 0);
-      const hitchAssistDist = 20;
-      const camDist = THREE.MathUtils.lerp(normalCamDist, hitchAssistDist, s.hitchCamBlend);
+        cabGroup.position.x -= Math.sin(autoState.cabHeading) * moveStep;
+        cabGroup.position.z -= Math.cos(autoState.cabHeading) * moveStep;
+        cabGroup.rotation.y = autoState.cabHeading;
 
-      const normalCamHeight = Math.max(2.5, (s.isHitched ? 12.5 : 10.5) + orb.pitchOffset);
-      const hitchAssistHeight = 19.5;
-      const camHeight = THREE.MathUtils.lerp(normalCamHeight, hitchAssistHeight, s.hitchCamBlend);
+        // Fifth-Wheel Kinematic Trailer Follow
+        const fifthWheelX = cabGroup.position.x + Math.sin(autoState.cabHeading) * 2.4;
+        const fifthWheelZ = cabGroup.position.z + Math.cos(autoState.cabHeading) * 2.4;
+        trailerGroup.position.set(fifthWheelX, 0, fifthWheelZ);
 
-      const targetCamX = cabGroup.position.x + Math.sin(totalCamAngle) * camDist;
-      const targetCamZ = cabGroup.position.z + Math.cos(totalCamAngle) * camDist;
+        const trailerWheelbase = 13.5;
+        const angleDiff = normalizeAngle(autoState.cabHeading - autoState.trailerHeading);
+        autoState.trailerHeading = normalizeAngle(
+          autoState.trailerHeading + (moveStep / trailerWheelbase) * Math.sin(angleDiff)
+        );
+        trailerGroup.rotation.y = autoState.trailerHeading;
 
-      camera.position.x += (targetCamX - camera.position.x) * 10 * dt;
-      camera.position.z += (targetCamZ - camera.position.z) * 10 * dt;
-      camera.position.y += (camHeight - camera.position.y) * 8 * dt;
-
-      if (s.cameraShake > 0) {
-        camera.position.x += (Math.random() - 0.5) * s.cameraShake * 2;
-        camera.position.y += (Math.random() - 0.5) * s.cameraShake * 2;
-        s.cameraShake = Math.max(0, s.cameraShake - 3.5 * dt);
+        // Subtle realistic cab/trailer suspension roll in curves
+        const targetRoll = -turnRate * (autoState.speedKmh / 35) * 4.5;
+        autoState.rollAngleDeg = THREE.MathUtils.lerp(autoState.rollAngleDeg, targetRoll, 4.0 * dt);
+        cabTiltGroup.rotation.z = THREE.MathUtils.degToRad(autoState.rollAngleDeg * 0.65);
+        trailerTiltGroup.rotation.z = THREE.MathUtils.degToRad(autoState.rollAngleDeg);
       }
 
-      const fifthWheelWorldX = cabGroup.position.x + Math.sin(s.cabHeading) * 2.4;
-      const fifthWheelWorldZ = cabGroup.position.z + Math.cos(s.cabHeading) * 2.4;
-      const hitchMidX = (fifthWheelWorldX + 7) * 0.5;
-      const hitchMidZ = (fifthWheelWorldZ + 44) * 0.5;
+      // 5. Automated Turn Signals (Activate 3 Seconds Prior to Turn, Cancel on Straight)
+      const speedMetersPerSec = Math.max(3, autoState.speedKmh * 0.62);
+      const secondsToWaypoint = distToActiveWp / speedMetersPerSec;
 
-      const desiredLookX = THREE.MathUtils.lerp(cabGroup.position.x, hitchMidX, s.hitchCamBlend);
-      const desiredLookY = THREE.MathUtils.lerp(3.2, 2.0, s.hitchCamBlend);
-      const desiredLookZ = THREE.MathUtils.lerp(cabGroup.position.z, hitchMidZ, s.hitchCamBlend);
+      if (activeWp.turnAfter !== 'OFF' && secondsToWaypoint <= 3.4) {
+        autoState.blinker = activeWp.turnAfter;
+      } else if (Math.abs(autoState.steerAngleDeg) > 6) {
+        autoState.blinker = autoState.steerAngleDeg > 0 ? 'LEFT' : 'RIGHT';
+      } else {
+        autoState.blinker = 'OFF';
+      }
 
-      camLookTarget.x = THREE.MathUtils.lerp(camLookTarget.x, desiredLookX, 10 * dt);
-      camLookTarget.y = THREE.MathUtils.lerp(camLookTarget.y, desiredLookY, 10 * dt);
-      camLookTarget.z = THREE.MathUtils.lerp(camLookTarget.z, desiredLookZ, 10 * dt);
+      // 2Hz Turn Signal Flash on Cab & Trailer LEDs
+      const blinkWave = Math.floor(simElapsed * 4) % 2 === 0;
+      const leftActive = autoState.blinker === 'LEFT' && blinkWave;
+      const rightActive = autoState.blinker === 'RIGHT' && blinkWave;
 
-      camera.lookAt(camLookTarget);
+      leftBlinkerMat.color.setHex(leftActive ? 0xf59e0b : 0x332200);
+      leftBlinkerLight.intensity = leftActive ? 2.2 : 0;
 
-      // Update React HUD at 10Hz
-      hudTimer += dt;
-      if (hudTimer > 0.1) {
-        hudTimer = 0;
-        const absRoll = Math.round(Math.abs(s.rollAngle));
-        const articulationDeg = Math.round(
-          THREE.MathUtils.radToDeg(Math.abs(s.cabHeading - s.trailerHeading))
-        );
+      rightBlinkerMat.color.setHex(rightActive ? 0xf59e0b : 0x332200);
+      rightBlinkerLight.intensity = rightActive ? 2.2 : 0;
 
-        // Calculate Multi-Segment Route Progress & Deliverable 5 Navigation Breadcrumb
-        let rawProg = 0;
-        let navInstruction = '[ 🅿️ Reverse [S] into Blue Trailer (or Press [H]) ]';
-        let upcomingLight = null;
-        let nextLightDist = 0;
-
-        if (s.isHitched) {
-          const distLeg1 = Math.max(0, 41.6 - Math.max(-420, cabGroup.position.z)); // 0 to 461.6m
-          const distLeg2 =
-            cabGroup.position.z < -380
-              ? Math.max(0, Math.min(520, -cabGroup.position.x))
-              : 0; // 0 to 520m
-          const distLeg3 =
-            cabGroup.position.x < -480
-              ? Math.max(0, Math.min(400, -420 - cabGroup.position.z))
-              : 0; // 0 to 400m
-          const totalDriven = distLeg1 + distLeg2 + distLeg3;
-          rawProg = Math.min(99, Math.max(0, Math.round((totalDriven / 1380) * 100)));
-
-          if (s.routeLeg === 1) {
-            const distToTurn1 = Math.max(0, Math.round(cabGroup.position.z - -420));
-            navInstruction = `[ ↰ ${distToTurn1}m: Signal [Q] & Turn Left at Highway Junction ]`;
-            // Check Segment 1 lights
-            for (let i = 0; i < 2; i++) {
-              if (cabGroup.position.z > trafficLights[i].stopZ - 8) {
-                upcomingLight = trafficLights[i];
-                nextLightDist = Math.max(0, Math.round(cabGroup.position.z - trafficLights[i].stopZ));
-                break;
-              }
-            }
-          } else if (s.routeLeg === 2) {
-            const distToTurn2 = Math.max(0, Math.round(cabGroup.position.x - -520));
-            navInstruction = `[ ↱ ${distToTurn2}m: Signal [E] & Turn Right into Port Terminal ]`;
-            if (cabGroup.position.x > trafficLights[2].stopX - 8) {
-              upcomingLight = trafficLights[2];
-              nextLightDist = Math.max(0, Math.round(cabGroup.position.x - trafficLights[2].stopX));
-            }
-          } else {
-            const distToGate = Math.max(0, Math.round(cabGroup.position.z - portCenterZ));
-            navInstruction =
-              distToGate > 60
-                ? `[ 🅿️ ${distToGate}m: Gate-In Drop Zone Ahead ]`
-                : `[ 🅿️ Gate-In Zone Ahead ]`;
-          }
+     // 6. Animate Ambient Philippine Traffic & Red-Light Stopping
+      const emergencyStrobe = Math.floor(simElapsed * 8) % 2 === 0;
+      ambientVehicles.forEach((av) => {
+        if (av.isAmbulance) {
+          av.redBeaconMat.color.setHex(emergencyStrobe ? 0xff1e1e : 0x330505);
+          av.blueBeaconMat.color.setHex(!emergencyStrobe ? 0x38bdf8 : 0x051533);
         }
 
-        const nextLightState = upcomingLight ? upcomingLight.state : 'CLEAR';
+        const linkedLight = trafficLights[av.lightIdx];
+        let vSpeed = av.baseSpeed;
+        const posCoord = av.axis === 'Z' ? av.mesh.position.z : av.mesh.position.x;
+        const distToStop = (av.stopCoord - posCoord) * av.dir;
 
-        setHud((prev) => ({
-          ...prev,
-          speed: Math.round(s.speed),
-          steerDeg: Math.round(s.steerAngle),
+        if (
+          linkedLight &&
+          (linkedLight.state === 'RED' || linkedLight.state === 'YELLOW') &&
+          distToStop > 0 &&
+          distToStop < 28
+        ) {
+          vSpeed = distToStop < 5 ? 0 : av.baseSpeed * (distToStop / 28);
+        }
+
+        if (av.axis === 'Z') {
+          av.mesh.position.z += av.dir * vSpeed * dt;
+          if (av.dir > 0 && av.mesh.position.z > av.maxBound) av.mesh.position.z = av.minBound;
+          if (av.dir < 0 && av.mesh.position.z < av.minBound) av.mesh.position.z = av.maxBound;
+        } else {
+          av.mesh.position.x += av.dir * vSpeed * dt;
+          if (av.dir > 0 && av.mesh.position.x > av.maxBound) av.mesh.position.x = av.minBound;
+          if (av.dir < 0 && av.mesh.position.x < av.minBound) av.mesh.position.x = av.maxBound;
+        }
+      });
+
+      // 7. Weather-Reactive Pedestrians ("Fade in Rain" over ~2s & Disable Draw Calls at 0)
+      const targetPedOpacity = curW === 'NOMINAL' ? 1.0 : 0.0;
+      pedOpacity = THREE.MathUtils.lerp(pedOpacity, targetPedOpacity, rawDt * 1.2);
+      if (Math.abs(pedOpacity - targetPedOpacity) < 0.01) pedOpacity = targetPedOpacity;
+
+      pedestrianMaterials.forEach((mat) => {
+        mat.opacity = pedOpacity;
+      });
+
+      pedestrians.forEach((ped) => {
+        if (pedOpacity <= 0.02) {
+          ped.group.visible = false;
+        } else {
+          ped.group.visible = true;
+          ped.group.position.z =
+            ped.baseZ + Math.sin(simElapsed * ped.speed + ped.phase) * ped.walkRange;
+          ped.group.position.y = Math.abs(Math.sin(simElapsed * 6 + ped.phase)) * 0.12;
+        }
+      });
+
+      // ==========================================
+      // 9. MULTI-CAMERA DIRECTOR ([1] CHASE, [2] IN-CAB, [3] CCTV, [4] ORBIT)
+      // ==========================================
+      const mode = cameraModeRef.current;
+      const orb = camOrbitRef.current;
+
+      // Hide solid cab shell & windshield in In-Cab POV so geometry never blocks the lens
+      const isInCab = mode === 2 || mode === 'CAB';
+      cabBox.visible = !isInCab;
+      windshield.visible = !isInCab;
+      roofSpoiler.visible = !isInCab;
+
+      if (mode === 1) {
+        // [1] Drone Chase Camera
+        const followAngle =
+          autoState.trailerHeading * 0.65 + autoState.cabHeading * 0.35 + (orb.isRightDown ? orb.yawOffset : 0.22);
+        const camDist = 28;
+        const camHeight = 13.5;
+
+        const targetX = cabGroup.position.x + Math.sin(followAngle) * camDist;
+        const targetZ = cabGroup.position.z + Math.cos(followAngle) * camDist;
+
+        camera.position.lerp(new THREE.Vector3(targetX, camHeight, targetZ), 6.0 * rawDt);
+        camLookTarget.lerp(
+          new THREE.Vector3(cabGroup.position.x, 3.5, cabGroup.position.z),
+          8.0 * rawDt
+        );
+        camera.lookAt(camLookTarget);
+      } else if (isInCab) {
+        // [2] In-Cab First-Person Perspective (Philippine Left-Hand Drive: X = -0.8, Y = 3.75, Z = -3.6)
+        const forwardX = -Math.sin(autoState.cabHeading);
+        const forwardZ = -Math.cos(autoState.cabHeading);
+        const rightX = Math.cos(autoState.cabHeading);
+        const rightZ = -Math.sin(autoState.cabHeading);
+
+        // Local offset (-0.8m left driver seat, +3.6m forward toward windshield, 3.75m eye height)
+        const cabCamX = cabGroup.position.x + rightX * -0.8 + forwardX * 3.6;
+        const cabCamZ = cabGroup.position.z + rightZ * -0.8 + forwardZ * 3.6;
+
+        camera.position.set(cabCamX, 3.75, cabCamZ);
+        camLookTarget.set(
+          cabCamX + forwardX * 55,
+          3.45,
+          cabCamZ + forwardZ * 55
+        );
+        camera.lookAt(camLookTarget);
+      } else if (mode === 3) {
+        // [3] Roadside CCTV Surveillance Angle (Auto-selects nearest junction/corridor camera)
+        let cctvPos = new THREE.Vector3(26, 16, -355);
+        if (cabGroup.position.x < -220 && cabGroup.position.z < -260) {
+          cctvPos.set(-475, 17, -445);
+        } else if (cabGroup.position.x < -350 && cabGroup.position.z >= -260) {
+          cctvPos.set(-548, 16, -155);
+        } else if (cabGroup.position.z > -120) {
+          cctvPos.set(28, 15, -45);
+        }
+        camera.position.lerp(cctvPos, 5.0 * rawDt);
+        camLookTarget.lerp(
+          new THREE.Vector3(cabGroup.position.x, 3.2, cabGroup.position.z),
+          10.0 * rawDt
+        );
+        camera.lookAt(camLookTarget);
+      } else {
+        // [4] Free 360° Orbit Camera (Right-Click Drag + Scroll Zoom)
+        const totalAngle = autoState.cabHeading + orb.yawOffset;
+        const dist = orb.zoomDist;
+        const height = Math.max(3.0, 12.0 + orb.pitchOffset);
+
+        const targetX = cabGroup.position.x + Math.sin(totalAngle) * dist;
+        const targetZ = cabGroup.position.z + Math.cos(totalAngle) * dist;
+
+        camera.position.lerp(new THREE.Vector3(targetX, height, targetZ), 8.0 * rawDt);
+        camLookTarget.lerp(
+          new THREE.Vector3(cabGroup.position.x, 3.2, cabGroup.position.z),
+          10.0 * rawDt
+        );
+        camera.lookAt(camLookTarget);
+      }
+
+      // ==========================================
+      // 10. 10HZ INDUSTRIAL IoT TELEMATICS HUD SYNC
+      // ==========================================
+      hudAccum += rawDt;
+      if (hudAccum > 0.1) {
+        hudAccum = 0;
+
+        const speedRounded = Math.round(autoState.speedKmh);
+        const rpm =
+          speedRounded === 0
+            ? 680 + Math.round(Math.sin(simElapsed * 3) * 15)
+            : Math.round(1120 + (autoState.speedKmh / 35) * 360 + Math.sin(simElapsed * 5) * 18);
+
+        const fuelRate =
+          speedRounded === 0
+            ? 3.8
+            : Number((26.4 + (autoState.speedKmh / 35) * 5.2 + (weightKg / 25000) * 2.1).toFixed(1));
+
+        const reeferTemp = isPerishable
+          ? Number((-4.2 + Math.sin(simElapsed * 0.4) * 0.1).toFixed(1))
+          : 18.5;
+
+        const articulationDeg = Math.round(
+          THREE.MathUtils.radToDeg(
+            Math.abs(normalizeAngle(autoState.cabHeading - autoState.trailerHeading))
+          )
+        );
+
+        const routeProgress = Math.min(
+          100,
+          Math.round(((autoState.wpIndex + (1 - Math.min(1, distToActiveWp / 420))) / waypoints.length) * 100)
+        );
+
+        setHud({
+          speed: speedRounded,
+          rpm,
+          fuelRate,
+          reeferTemp,
+          compressorStatus: isPerishable ? 'ACTIVE (MODULATING)' : 'STANDBY (AMBIENT)',
+          gear: speedRounded === 0 ? 'IDLE' : 'D',
+          steerDeg: Math.round(autoState.steerAngleDeg),
           articulationDeg,
-          rollDeg: absRoll,
-          signedRollDeg: Math.round(s.rollAngle),
-          brakePressure: Math.round(s.brakePressure),
-          isBraking: keysRef.current.space,
-          isReversingHitch: isReversingForHitch,
-          violationAlertActive: s.violationAlertTimer > 0,
-          turnViolationAlertActive: s.turnViolationTimer > 0,
-          blinker: s.blinker,
+          blinker: autoState.blinker,
           blinkOn: blinkWave,
-          navInstruction,
-          health: Math.round(s.health),
-          progress: rawProg,
-          timeLeft: Math.ceil(s.timeLeft),
-          strikes: s.strikes,
-          governorTimer: Math.ceil(s.governorTimer),
-          nextLightState,
-          nextLightDist,
-          stage: s.isHitched ? 'HAUL' : 'HITCH'
-        }));
+          navStatus: navBanner,
+          nextLightState: upcomingLight ? upcomingLight.state : 'GREEN',
+          nextLightDist: upcomingLight ? Math.max(0, Math.round(stopDist)) : 0,
+          nextLightLabel: upcomingLight ? upcomingLight.label : 'CORRIDOR CLEAR',
+          progress: routeProgress,
+          lapCount: autoState.lapCount,
+          cutoffTimer: Math.ceil(autoState.cutoffTimer),
+          health: Math.round(initialHealth)
+        });
       }
 
       renderer.render(scene, camera);
@@ -1285,16 +1238,10 @@ const TruckHaul3D = ({
       window.removeEventListener('mouseup', onMouseUp);
       container.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('resize', onResize);
       renderer.dispose();
     };
-  }, [weightKg]);
-
-  // Deliverable 3: Rollover Danger Threshold (>= 22°) & Gauge Color
-  const isDangerTilt = hud.rollDeg >= 22;
-  const rollColor =
-    hud.rollDeg >= 22 ? '#ef4444' : hud.rollDeg >= 14 ? '#f1c40f' : '#2ecc71';
+  }, [weightKg, initialHealth, isPerishable]);
 
   const formatTimer = (sec) => {
     const m = Math.floor(sec / 60);
@@ -1313,321 +1260,354 @@ const TruckHaul3D = ({
         userSelect: 'none'
       }}
     >
-      <style>{`
-        @keyframes pulseDangerAlert {
-          0%, 100% { transform: translateX(-50%) scale(1); box-shadow: 0 0 18px rgba(239, 68, 68, 0.45); }
-          50% { transform: translateX(-50%) scale(1.03); box-shadow: 0 0 30px rgba(239, 68, 68, 0.85); }
-        }
-        @keyframes vignetteStrobe {
-          0%, 100% { opacity: 0.95; }
-          50% { opacity: 0.35; }
-        }
-      `}</style>
-
       <div ref={mountRef} style={{ width: '100vw', height: '100vh' }} />
 
-      {/* RED LIGHT RADIAL VIGNETTE STROBE */}
-      {(cameraFlash || hud.violationAlertActive) && (
-        <div
+      {/* TOP CENTER PHASE PILL & PORT CUT-OFF WINDOW */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          background: 'rgba(10, 14, 23, 0.88)',
+          backdropFilter: 'blur(14px)',
+          border: '1px solid rgba(56, 189, 248, 0.28)',
+          borderRadius: 999,
+          padding: '8px 20px',
+          color: '#f1f5f9',
+          zIndex: 10020,
+          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)'
+        }}
+      >
+        <span
           style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'radial-gradient(circle, transparent 40%, rgba(239, 68, 68, 0.45) 100%)',
-            pointerEvents: 'none',
-            zIndex: 10010,
-            animation: 'vignetteStrobe 0.45s infinite ease-in-out'
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#2ecc71',
+            boxShadow: '0 0 8px #2ecc71'
           }}
         />
-      )}
-
-      {/* DELIVERABLE 3: DANGER ZONE TILT WARNING OVERLAY (ONLY VISIBLE WHEN TILT >= 22°) */}
-      {isDangerTilt && hud.status === 'ACTIVE' && (
-        <div
+        <span
           style={{
-            position: 'absolute',
-            top: 28,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(239, 68, 68, 0.92)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid #fff',
-            borderRadius: 999,
-            padding: '10px 26px',
-            color: '#fff',
             fontFamily: "'Space Mono', monospace",
-            fontSize: 13,
-            fontWeight: 'bold',
-            letterSpacing: 0.8,
-            zIndex: 10025,
-            whiteSpace: 'nowrap',
-            animation: 'pulseDangerAlert 0.6s infinite ease-in-out'
+            fontSize: 11.5,
+            fontWeight: 700,
+            letterSpacing: 0.6,
+            color: '#38bdf8'
           }}
         >
-          🚨 CRITICAL TILT ({hud.rollDeg}°): EASE OFF STEERING OR BRAKE [SPACE]
-        </div>
-      )}
+          ORIGIN HAUL: DEPOT ➔ PORT TERMINAL
+        </span>
+        <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+        <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: '#cbd5e1' }}>
+          PORT CUT-OFF:{' '}
+          <strong style={{ color: '#2ecc71' }}>{formatTimer(hud.cutoffTimer)}</strong>
+        </span>
+      </div>
 
-      {/* DELIVERABLE 2: UNSIGNALED TURN VIOLATION ALERT */}
-      {hud.turnViolationAlertActive && hud.status === 'ACTIVE' && (
-        <div
-          style={{
-            position: 'absolute',
-            top: isDangerTilt ? 82 : 28,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(10, 14, 23, 0.92)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid #f1c40f',
-            boxShadow: '0 8px 28px rgba(241, 196, 15, 0.35)',
-            borderRadius: 999,
-            padding: '8px 22px',
-            color: '#f1c40f',
-            fontFamily: "'Space Mono', monospace",
-            fontSize: 12,
-            fontWeight: 'bold',
-            letterSpacing: 0.4,
-            zIndex: 10020,
-            whiteSpace: 'nowrap'
-          }}
-        >
-          ⚠️ TRAFFIC VIOLATION: UNSIGNALED TURN (-5% Cargo Integrity)
-        </div>
-      )}
-
-      {/* RED LIGHT VIOLATION HUD BANNER */}
-      {hud.violationAlertActive && hud.status === 'ACTIVE' && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 130,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'rgba(10, 14, 23, 0.92)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid #ef4444',
-            boxShadow: '0 8px 32px rgba(239, 68, 68, 0.35)',
-            borderRadius: 999,
-            padding: '8px 22px',
-            color: '#fff',
-            fontFamily: "'Space Mono', monospace",
-            fontSize: 12,
-            fontWeight: 'bold',
-            letterSpacing: 0.5,
-            zIndex: 10015,
-            whiteSpace: 'nowrap'
-          }}
-        >
-          🚨 RED LIGHT VIOLATION (Strike {hud.strikes}/3) | Speed Governed to 20 km/h
-        </div>
-      )}
-
-      {/* TOP LEFT: TRUCK, TIMER & TRAFFIC ENFORCEMENT TELEMETRY */}
+      {/* LEFT PANEL: INDUSTRIAL IoT COLD-CHAIN & FLEET TELEMATICS */}
       <div
         style={{
           position: 'absolute',
           top: 20,
           left: 20,
-          background: 'rgba(10, 14, 23, 0.85)',
-          backdropFilter: 'blur(12px)',
+          background: 'rgba(10, 14, 23, 0.88)',
+          backdropFilter: 'blur(16px)',
           border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: 12,
-          padding: '14px 18px',
-          width: 305,
-          color: '#fff'
+          borderRadius: 14,
+          padding: '16px 18px',
+          width: 330,
+          color: '#fff',
+          zIndex: 10020,
+          boxShadow: '0 16px 40px rgba(0, 0, 0, 0.5)'
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: '#2ecc71', fontWeight: 700, letterSpacing: 0.5 }}>
-            🚛 3D INLAND FREIGHT HAUL
+        {/* Header */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10.5,
+              color: '#38bdf8',
+              fontWeight: 700,
+              letterSpacing: 0.8,
+              fontFamily: "'Space Mono', monospace"
+            }}
+          >
+            📡 DIGITAL TWIN TELEMATICS
           </span>
           <span
             style={{
-              fontSize: 11,
+              fontSize: 10,
               fontFamily: "'Space Mono', monospace",
               background: 'rgba(46, 204, 113, 0.15)',
               color: '#2ecc71',
-              padding: '2px 8px',
+              border: '1px solid rgba(46, 204, 113, 0.3)',
+              padding: '2px 7px',
               borderRadius: 4,
               fontWeight: 'bold'
             }}
           >
-            {Number(weightKg).toLocaleString()} KG
+            AUTONOMOUS
           </span>
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>
+
+        {/* Cargo Title & Weight / TEU Specs */}
+        <div
+          style={{
+            fontSize: 15,
+            fontWeight: 700,
+            marginBottom: 4,
+            textTransform: 'uppercase',
+            letterSpacing: 0.3
+          }}
+        >
           {cargo}
         </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
-          ORIGIN: <strong style={{ color: '#cbd5e1' }}>{originHub}</strong> •{' '}
-          <strong style={{ color: liveWeather === 'NOMINAL' ? '#2ecc71' : '#f1c40f' }}>{liveWeather}</strong>
-        </div>
-
-        {/* PORT SLOT COUNTDOWN TIMER BOX */}
         <div
           style={{
-            background:
-              hud.timeLeft <= 20 && hud.stage === 'HAUL'
-                ? 'rgba(239, 68, 68, 0.18)'
-                : 'rgba(255, 255, 255, 0.03)',
-            border: `1px solid ${
-              hud.timeLeft <= 20 && hud.stage === 'HAUL'
-                ? '#ef4444'
-                : 'rgba(255, 255, 255, 0.08)'
-            }`,
-            borderRadius: 8,
-            padding: '8px 12px',
+            fontSize: 11,
+            color: '#94a3b8',
             marginBottom: 12,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
+            fontFamily: "'Space Mono', monospace"
           }}
         >
-          <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>⏱ PORT SLOT TIMER</span>
-          <span
-            style={{
-              fontSize: 16,
-              fontFamily: "'Space Mono', monospace",
-              fontWeight: 'bold',
-              color:
-                hud.stage === 'HITCH'
-                  ? '#f1c40f'
-                  : hud.timeLeft <= 20
-                  ? '#ef4444'
-                  : '#38bdf8'
-            }}
-          >
-            {hud.stage === 'HITCH' ? 'STANDBY' : formatTimer(hud.timeLeft)}
-          </span>
+          {Number(weightKg).toLocaleString()} KG • {teuCount} TEU •{' '}
+          <strong style={{ color: liveWeather === 'NOMINAL' ? '#2ecc71' : '#f1c40f' }}>
+            {liveWeather}
+          </strong>
         </div>
 
-        {/* Cargo Integrity */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
-          <span>CARGO INTEGRITY</span>
-          <span
-            style={{
-              fontFamily: "'Space Mono', monospace",
-              color: hud.health < 50 ? '#ef4444' : '#2ecc71',
-              fontWeight: 'bold'
-            }}
-          >
-            {hud.health}%
-          </span>
-        </div>
-        <div style={{ width: '100%', height: 6, background: '#1e293b', borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
-          <div
-            style={{
-              width: `${hud.health}%`,
-              height: '100%',
-              background: hud.health < 50 ? '#ef4444' : '#2ecc71',
-              transition: 'width 0.2s'
-            }}
-          />
-        </div>
-
-        {/* Port Terminal Distance */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
-          <span>DAVAO PORT TERMINAL</span>
-          <span style={{ fontFamily: "'Space Mono', monospace", color: '#38bdf8', fontWeight: 'bold' }}>
-            {hud.progress}%
-          </span>
-        </div>
-        <div style={{ width: '100%', height: 6, background: '#1e293b', borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
-          <div
-            style={{
-              width: `${hud.progress}%`,
-              height: '100%',
-              background: '#38bdf8',
-              transition: 'width 0.2s'
-            }}
-          />
-        </div>
-
-        {/* Traffic Light & Strikes Row */}
+        {/* Cold Chain Monitor Box */}
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: 10,
-            color: '#cbd5e1',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            paddingTop: 8
+            background: 'rgba(56, 189, 248, 0.06)',
+            border: '1px solid rgba(56, 189, 248, 0.22)',
+            borderRadius: 10,
+            padding: '10px 12px',
+            marginBottom: 12
           }}
         >
-          <span>
-            NEXT SIGNAL:{' '}
-            <strong
-              style={{
-                fontFamily: "'Space Mono', monospace",
-                color:
-                  hud.nextLightState === 'RED'
-                    ? '#ef4444'
-                    : hud.nextLightState === 'YELLOW'
-                    ? '#f1c40f'
-                    : '#2ecc71'
-              }}
-            >
-              {hud.nextLightState === 'CLEAR'
-                ? 'CLEAR'
-                : `${hud.nextLightState} (${hud.nextLightDist}m)`}
-            </strong>
-          </span>
-          <span>
-            STRIKES:{' '}
-            <strong
-              style={{
-                fontFamily: "'Space Mono', monospace",
-                color: hud.strikes > 0 ? '#ef4444' : '#94a3b8'
-              }}
-            >
-              {hud.strikes}/3
-            </strong>
-          </span>
-        </div>
-
-        {hud.governorTimer > 0 && (
           <div
             style={{
-              marginTop: 8,
-              background: 'rgba(239, 68, 68, 0.16)',
-              border: '1px solid #ef4444',
-              color: '#ef4444',
-              fontSize: 10,
-              fontFamily: "'Space Mono', monospace",
-              padding: '4px 8px',
-              borderRadius: 6,
-              textAlign: 'center',
-              fontWeight: 'bold'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 6
             }}
           >
-            GOVERNOR ACTIVE: 20 KM/H ({hud.governorTimer}s)
+            <span
+              style={{
+                fontSize: 10,
+                color: '#94a3b8',
+                fontWeight: 700,
+                letterSpacing: 0.5
+              }}
+            >
+              ❄️ COLD CHAIN MONITOR
+            </span>
+            <span
+              style={{
+                fontSize: 9.5,
+                fontFamily: "'Space Mono', monospace",
+                color: '#2ecc71',
+                fontWeight: 'bold'
+              }}
+            >
+              [OPTIMAL]
+            </span>
           </div>
-        )}
-
-        {hud.stage === 'HITCH' && (
-          <button
-            onClick={() => {
-              forceHitchRef.current = true;
-            }}
+          <div
             style={{
-              marginTop: 10,
-              width: '100%',
-              background: '#2ecc71',
-              color: '#0a0e17',
-              border: 'none',
-              padding: '8px',
-              borderRadius: 6,
-              fontWeight: 700,
-              fontSize: 11,
-              cursor: 'pointer',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
               fontFamily: "'Space Mono', monospace"
             }}
           >
-            🔗 AUTO-HITCH TRAILER [H]
-          </button>
-        )}
+            <div>
+              <div style={{ fontSize: 9, color: '#64748b' }}>INTERNAL REEFER TEMP</div>
+              <div style={{ fontSize: 16, fontWeight: 'bold', color: '#38bdf8' }}>
+                {hud.reeferTemp > 0 ? `+${hud.reeferTemp}` : hud.reeferTemp}°C
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 9, color: '#64748b' }}>COMPRESSOR CYCLING</div>
+              <div style={{ fontSize: 11, fontWeight: 'bold', color: '#e2e8f0' }}>
+                {hud.compressorStatus}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Vehicle Telemetry Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 8,
+            marginBottom: 12
+          }}
+        >
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.07)',
+              borderRadius: 8,
+              padding: '8px'
+            }}
+          >
+            <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>ENGINE RPM</div>
+            <div
+              style={{
+                fontSize: 13,
+                fontFamily: "'Space Mono', monospace",
+                fontWeight: 'bold',
+                color: '#f1f5f9',
+                marginTop: 2
+              }}
+            >
+              {hud.rpm.toLocaleString()}
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.07)',
+              borderRadius: 8,
+              padding: '8px'
+            }}
+          >
+            <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>CRUISE SPD</div>
+            <div
+              style={{
+                fontSize: 13,
+                fontFamily: "'Space Mono', monospace",
+                fontWeight: 'bold',
+                color: '#38bdf8',
+                marginTop: 2
+              }}
+            >
+              {hud.speed} km/h
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.07)',
+              borderRadius: 8,
+              padding: '8px'
+            }}
+          >
+            <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700 }}>FUEL RATE</div>
+            <div
+              style={{
+                fontSize: 12,
+                fontFamily: "'Space Mono', monospace",
+                fontWeight: 'bold',
+                color: '#2ecc71',
+                marginTop: 2
+              }}
+            >
+              {hud.fuelRate} L/100
+            </div>
+          </div>
+        </div>
+
+        {/* Traffic Signal Telemetry */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: 10.5,
+            color: '#cbd5e1',
+            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            paddingTop: 10,
+            marginBottom: 10
+          }}
+        >
+          <span>NEXT SIGNAL INTERLOCK:</span>
+          <strong
+            style={{
+              fontFamily: "'Space Mono', monospace",
+              color:
+                hud.nextLightState === 'RED'
+                  ? '#ef4444'
+                  : hud.nextLightState === 'YELLOW'
+                  ? '#f1c40f'
+                  : '#2ecc71'
+            }}
+          >
+            {hud.nextLightState}{' '}
+            {hud.nextLightDist > 0 && hud.nextLightDist < 120 ? `(${hud.nextLightDist}m)` : ''}
+          </strong>
+        </div>
+
+        {/* Compliance Badges */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 6,
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 9.5,
+            color: '#94a3b8',
+            background: 'rgba(130, 160, 255, 0.06)',
+            border: '1px solid rgba(130, 160, 255, 0.18)',
+            borderRadius: 6,
+            padding: '6px 8px',
+            marginBottom: 12
+          }}
+        >
+          <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>[GRADE A CONTAINER]</span>
+          <span>•</span>
+          <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>[LASHING: SECURED]</span>
+        </div>
+
+        {/* Complete Haul -> Vessel Stage CTA */}
+        <button
+          type="button"
+          onClick={() =>
+            onComplete &&
+            onComplete({
+              success: true,
+              finalHealth: 100
+            })
+          }
+          style={{
+            width: '100%',
+            background: '#2ecc71',
+            color: '#060911',
+            border: 'none',
+            padding: '10px 14px',
+            borderRadius: 8,
+            fontFamily: "'Space Mono', monospace",
+            fontSize: 11.5,
+            fontWeight: 700,
+            cursor: 'pointer',
+            letterSpacing: 0.4,
+            boxShadow: '0 4px 14px rgba(46, 204, 113, 0.35)',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          COMPLETE HAUL ➔ VESSEL STAGE
+        </button>
       </div>
 
-      {/* TOP RIGHT: [?] TOGGLE & [✕ EXIT TO MAP] */}
+      {/* TOP RIGHT: MULTI-CAMERA DIRECTOR ([1]-[4]), SPEED TOGGLE & EXIT */}
       <div
         style={{
           position: 'absolute',
@@ -1641,35 +1621,31 @@ const TruckHaul3D = ({
         }}
       >
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* 1x / 2x Simulation Speed Toggle */}
           <button
             type="button"
-            onClick={() => {
-              const next = !showControls;
-              setShowControls(next);
-              if (next) triggerControlsAutoFade();
-            }}
-            title="Toggle Controls Cheat Sheet"
+            onClick={toggleSimSpeed}
             style={{
-              width: 36,
               height: 36,
+              padding: '0 12px',
               borderRadius: 10,
-              background: showControls ? 'rgba(56, 189, 248, 0.2)' : 'rgba(10, 14, 23, 0.85)',
+              background:
+                simSpeed === 2 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(10, 14, 23, 0.88)',
               backdropFilter: 'blur(12px)',
-              border: `1px solid ${showControls ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
-              color: showControls ? '#38bdf8' : '#cbd5e1',
+              border: `1px solid ${
+                simSpeed === 2 ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)'
+              }`,
+              color: simSpeed === 2 ? '#38bdf8' : '#cbd5e1',
               fontFamily: "'Space Mono', monospace",
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.2s ease'
+              cursor: 'pointer'
             }}
           >
-            [?]
+            ⚡ SPEED: {simSpeed}x
           </button>
 
+          {/* Return to Command Map Button */}
           <button
             type="button"
             onClick={onExit}
@@ -1677,454 +1653,254 @@ const TruckHaul3D = ({
               height: 36,
               padding: '0 14px',
               borderRadius: 10,
-              background: 'rgba(10, 14, 23, 0.85)',
+              background: 'rgba(10, 14, 23, 0.88)',
               backdropFilter: 'blur(12px)',
               border: '1px solid rgba(239, 68, 68, 0.45)',
               color: '#ef4444',
               fontFamily: "'Space Mono', monospace",
               fontSize: 11,
               fontWeight: 'bold',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              cursor: 'pointer'
             }}
           >
-            ✕ EXIT TO MAP
+            [✕ RETURN TO COMMAND MAP]
           </button>
         </div>
 
-        {/* Auto-Fading Controls Cheat Sheet Overlay */}
+        {/* Multi-Camera Director Pill Bar */}
         <div
-          onMouseEnter={() => {
-            if (controlsFadeTimerRef.current) clearTimeout(controlsFadeTimerRef.current);
-          }}
-          onMouseLeave={triggerControlsAutoFade}
           style={{
-            background: 'rgba(10, 14, 23, 0.85)',
-            backdropFilter: 'blur(12px)',
+            display: 'flex',
+            gap: 6,
+            background: 'rgba(10, 14, 23, 0.88)',
+            backdropFilter: 'blur(14px)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: 12,
-            padding: '12px 16px',
-            color: '#cbd5e1',
-            fontSize: 11,
-            lineHeight: 1.75,
-            width: 255,
-            opacity: showControls ? 1 : 0,
-            transform: showControls ? 'translateY(0)' : 'translateY(-8px)',
-            pointerEvents: showControls ? 'auto' : 'none',
-            transition: 'opacity 0.35s ease, transform 0.35s ease'
+            padding: 6
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              color: '#fff',
-              fontWeight: 700,
-              marginBottom: 4,
-              fontSize: 11
-            }}
-          >
-            <span>DRIVING CONTROLS</span>
-            <span style={{ fontSize: 9, color: '#64748b', fontFamily: "'Space Mono', monospace" }}>
-              AUTO-HIDE
-            </span>
-          </div>
-          <div>
-            <strong style={{ color: '#2ecc71', fontFamily: "'Space Mono', monospace" }}>[W / S]</strong> Drive / Reverse Hitch
-          </div>
-          <div>
-            <strong style={{ color: '#2ecc71', fontFamily: "'Space Mono', monospace" }}>[A / D]</strong> Steer Tractor Head
-          </div>
-          <div>
-            <strong style={{ color: '#f1c40f', fontFamily: "'Space Mono', monospace" }}>[Q / E]</strong> Left / Right Turn Signal
-          </div>
-          <div>
-            <strong style={{ color: '#ef4444', fontFamily: "'Space Mono', monospace" }}>[SPACE]</strong> Pneumatic Air Brakes
-          </div>
-          <div>
-            <strong style={{ color: '#38bdf8', fontFamily: "'Space Mono', monospace" }}>[H]</strong> Instant Trailer Hitch
-          </div>
-          <div>
-            <strong style={{ color: '#38bdf8', fontFamily: "'Space Mono', monospace" }}>[R-CLICK]</strong> Drag 360° Orbit Cam
-          </div>
+          {CAMERA_MODES.map((cam) => {
+            const active = cameraMode === cam.id;
+            return (
+              <button
+                key={cam.id}
+                type="button"
+                onClick={() => switchCameraMode(cam.id)}
+                style={{
+                  background: active ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                  border: `1px solid ${active ? '#38bdf8' : 'transparent'}`,
+                  color: active ? '#38bdf8' : '#94a3b8',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  fontFamily: "'Space Mono', monospace",
+                  fontSize: 10,
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                [{cam.key}] {cam.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* DELIVERABLE 2, 3 & 5: INTEGRATED BOTTOM DASHBOARD CLUSTER (WITH GPS NAV, BLINKERS & COMPACT ROLL GAUGE) */}
+      {/* BOTTOM CENTER: COMPACT AUTONOMOUS TELEMETRY & SIGNAL CLUSTER */}
       <div
         style={{
           position: 'absolute',
-          bottom: 18,
+          bottom: 20,
           left: '50%',
           transform: 'translateX(-50%)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: 8,
-          zIndex: 10015
+          zIndex: 10020
         }}
       >
-        {/* DELIVERABLE 5: SUBTLE GPS NAVIGATION BREADCRUMB PILL */}
+        {/* Active Waypoint / Signal Status Breadcrumb */}
         <div
           style={{
-            background: 'rgba(10, 14, 23, 0.85)',
+            background: 'rgba(10, 14, 23, 0.88)',
             backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(56, 189, 248, 0.28)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
             borderRadius: 999,
             padding: '5px 18px',
-            color: hud.isReversingHitch ? '#38bdf8' : '#e2e8f0',
+            color: '#e2e8f0',
             fontFamily: "'Space Mono', monospace",
-            fontSize: 11.5,
+            fontSize: 11,
             fontWeight: 700,
-            letterSpacing: 0.4,
-            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.4)'
+            letterSpacing: 0.4
           }}
         >
-          {hud.isReversingHitch
-            ? '🎥 [ HITCH ASSIST CAM ACTIVE — ALIGN KINGPIN WITH BLUE RING ]'
-            : hud.navInstruction}
+          {hud.navStatus}
         </div>
 
-        {/* MAIN INSTRUMENT CLUSTER */}
+        {/* Main Bottom Instrument Cluster */}
         <div
           style={{
-            background: 'rgba(10, 14, 23, 0.85)',
-            backdropFilter: 'blur(12px)',
+            background: 'rgba(10, 14, 23, 0.9)',
+            backdropFilter: 'blur(16px)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: 16,
             padding: '10px 22px',
             display: 'flex',
             alignItems: 'center',
             gap: 20,
-            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)',
-            minWidth: 540
+            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5)'
           }}
         >
-          {/* LEFT TURN SIGNAL ARROW [Q] */}
-          <button
-            type="button"
-            onClick={() => {
-              simRef.current.blinker = simRef.current.blinker === 'LEFT' ? 'OFF' : 'LEFT';
-            }}
-            title="Left Turn Signal [Q]"
+          {/* Left Turn Indicator */}
+          <div
             style={{
-              width: 38,
-              height: 38,
+              width: 36,
+              height: 36,
               borderRadius: 8,
               background:
                 hud.blinker === 'LEFT' && hud.blinkOn
-                  ? 'rgba(46, 204, 113, 0.25)'
+                  ? 'rgba(245, 158, 11, 0.25)'
                   : 'rgba(255, 255, 255, 0.03)',
               border: `1px solid ${
                 hud.blinker === 'LEFT' && hud.blinkOn
-                  ? '#2ecc71'
+                  ? '#f59e0b'
                   : 'rgba(255, 255, 255, 0.08)'
               }`,
-              color:
-                hud.blinker === 'LEFT' && hud.blinkOn
-                  ? '#2ecc71'
-                  : '#64748b',
-              boxShadow:
-                hud.blinker === 'LEFT' && hud.blinkOn
-                  ? '0 0 14px rgba(46, 204, 113, 0.5)'
-                  : 'none',
+              color: hud.blinker === 'LEFT' && hud.blinkOn ? '#f59e0b' : '#475569',
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
               fontFamily: "'Space Mono', monospace",
-              padding: 0
+              fontSize: 15
             }}
           >
-            <span style={{ fontSize: 15, lineHeight: 1 }}>◄</span>
-            <span style={{ fontSize: 8, opacity: 0.8 }}>[Q]</span>
-          </button>
+            ◄
+          </div>
 
-          {/* ACTIVE GEAR BADGE: [R] or [D] */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.8, marginBottom: 4 }}>
-              GEAR
-            </span>
+          {/* Gear Indicator (D / IDLE) */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, marginBottom: 3 }}>
+              DRIVE STATE
+            </div>
             <div
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                padding: '4px 10px',
+                borderRadius: 6,
                 fontFamily: "'Space Mono', monospace",
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: 'bold',
                 background:
-                  hud.speed < 0
-                    ? 'rgba(241, 196, 15, 0.18)'
-                    : 'rgba(46, 204, 113, 0.18)',
-                border: `1px solid ${hud.speed < 0 ? '#f1c40f' : '#2ecc71'}`,
-                color: hud.speed < 0 ? '#f1c40f' : '#2ecc71'
+                  hud.gear === 'IDLE'
+                    ? 'rgba(241, 196, 15, 0.16)'
+                    : 'rgba(46, 204, 113, 0.16)',
+                border: `1px solid ${hud.gear === 'IDLE' ? '#f1c40f' : '#2ecc71'}`,
+                color: hud.gear === 'IDLE' ? '#f1c40f' : '#2ecc71'
               }}
             >
-              {hud.speed < 0 ? '[R]' : '[D]'}
+              {hud.gear}
             </div>
           </div>
 
-          {/* DIGITAL SPEEDOMETER */}
-          <div style={{ width: 110, textAlign: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 5 }}>
+          {/* Digital Speedometer */}
+          <div style={{ width: 95, textAlign: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 4 }}>
               <span
                 style={{
                   fontFamily: "'Space Mono', monospace",
-                  fontSize: 26,
+                  fontSize: 25,
                   fontWeight: 'bold',
-                  color: hud.governorTimer > 0 ? '#ef4444' : '#38bdf8',
+                  color: '#38bdf8',
                   lineHeight: 1
                 }}
               >
-                {Math.abs(hud.speed)}
+                {hud.speed}
               </span>
               <span
                 style={{
                   fontFamily: "'Space Mono', monospace",
                   fontSize: 10,
-                  color: '#94a3b8',
-                  fontWeight: 'bold'
+                  color: '#94a3b8'
                 }}
               >
                 km/h
               </span>
             </div>
-            <div
-              style={{
-                width: '100%',
-                height: 5,
-                background: 'rgba(255, 255, 255, 0.08)',
-                borderRadius: 3,
-                overflow: 'hidden',
-                marginTop: 6
-              }}
-            >
-              <div
-                style={{
-                  width: `${Math.min(100, (Math.abs(hud.speed) / 40) * 100)}%`,
-                  height: '100%',
-                  background:
-                    hud.governorTimer > 0
-                      ? '#ef4444'
-                      : hud.speed < 0
-                      ? '#f1c40f'
-                      : '#38bdf8',
-                  transition: 'width 0.1s linear'
-                }}
-              />
-            </div>
           </div>
 
-          {/* DELIVERABLE 3: COMPACT EMBEDDED GYRO ROLL & ARTICULATION METER */}
+          {/* Steering & Fifth-Wheel Articulation Readout */}
           <div
             style={{
-              width: 135,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 5,
               borderLeft: '1px solid rgba(255, 255, 255, 0.08)',
               borderRight: '1px solid rgba(255, 255, 255, 0.08)',
-              padding: '0 14px'
+              padding: '0 16px',
+              textAlign: 'center'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>
-                TILT / PIVOT
-              </span>
-              <span
-                style={{
-                  fontFamily: "'Space Mono', monospace",
-                  fontSize: 10.5,
-                  fontWeight: 'bold',
-                  color: rollColor
-                }}
-              >
-                {hud.rollDeg}° / {hud.articulationDeg}°
-              </span>
-            </div>
-
-            {/* Compact Bi-Directional Roll Bar */}
-            <div
-              style={{
-                position: 'relative',
-                width: '100%',
-                height: 8,
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: `1px solid ${isDangerTilt ? '#ef4444' : 'rgba(255, 255, 255, 0.08)'}`,
-                borderRadius: 4,
-                overflow: 'hidden'
-              }}
-            >
-              <div
-                style={{
-                  width: `${Math.min(100, (hud.rollDeg / ROLLOVER_LIMIT) * 100)}%`,
-                  height: '100%',
-                  background: rollColor,
-                  transition: 'width 0.08s linear, background 0.15s ease'
-                }}
-              />
-            </div>
-          </div>
-
-          {/* PNEUMATIC AIR BRAKE METER */}
-          <div style={{ width: 110, display: 'flex', flexDirection: 'column', gap: 5 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, letterSpacing: 0.5 }}>
-                BRAKE [SPACE]
-              </span>
-              <span
-                style={{
-                  fontFamily: "'Space Mono', monospace",
-                  fontSize: 10,
-                  fontWeight: 'bold',
-                  color: hud.isBraking ? '#ef4444' : '#64748b'
-                }}
-              >
-                {hud.isBraking ? 'LOCK' : `${hud.brakePressure}%`}
-              </span>
+            <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, marginBottom: 3 }}>
+              STEER / FIFTH-WHEEL
             </div>
             <div
               style={{
-                width: '100%',
-                height: 8,
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: `1px solid ${hud.isBraking ? '#ef4444' : 'rgba(255, 255, 255, 0.08)'}`,
-                borderRadius: 4,
-                overflow: 'hidden'
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 12,
+                color: '#e2e8f0',
+                fontWeight: 'bold'
               }}
             >
-              <div
-                style={{
-                  width: `${hud.brakePressure}%`,
-                  height: '100%',
-                  background: hud.isBraking
-                    ? 'linear-gradient(90deg, #f1c40f, #ef4444)'
-                    : '#38bdf8',
-                  transition: 'width 0.08s linear'
-                }}
-              />
+              {hud.steerDeg}° / {hud.articulationDeg}°
             </div>
           </div>
 
-          {/* RIGHT TURN SIGNAL ARROW [E] */}
-          <button
-            type="button"
-            onClick={() => {
-              simRef.current.blinker = simRef.current.blinker === 'RIGHT' ? 'OFF' : 'RIGHT';
-            }}
-            title="Right Turn Signal [E]"
+          {/* Signal Interlock Status */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 9, color: '#64748b', fontWeight: 700, marginBottom: 3 }}>
+              SIGNAL STATUS
+            </div>
+            <div
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 12,
+                fontWeight: 'bold',
+                color:
+                  hud.nextLightState === 'RED'
+                    ? '#ef4444'
+                    : hud.nextLightState === 'YELLOW'
+                    ? '#f1c40f'
+                    : '#2ecc71'
+              }}
+            >
+              {hud.nextLightState}
+            </div>
+          </div>
+
+          {/* Right Turn Indicator */}
+          <div
             style={{
-              width: 38,
-              height: 38,
+              width: 36,
+              height: 36,
               borderRadius: 8,
               background:
                 hud.blinker === 'RIGHT' && hud.blinkOn
-                  ? 'rgba(46, 204, 113, 0.25)'
+                  ? 'rgba(245, 158, 11, 0.25)'
                   : 'rgba(255, 255, 255, 0.03)',
               border: `1px solid ${
                 hud.blinker === 'RIGHT' && hud.blinkOn
-                  ? '#2ecc71'
+                  ? '#f59e0b'
                   : 'rgba(255, 255, 255, 0.08)'
               }`,
-              color:
-                hud.blinker === 'RIGHT' && hud.blinkOn
-                  ? '#2ecc71'
-                  : '#64748b',
-              boxShadow:
-                hud.blinker === 'RIGHT' && hud.blinkOn
-                  ? '0 0 14px rgba(46, 204, 113, 0.5)'
-                  : 'none',
+              color: hud.blinker === 'RIGHT' && hud.blinkOn ? '#f59e0b' : '#475569',
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
               fontFamily: "'Space Mono', monospace",
-              padding: 0
+              fontSize: 15
             }}
           >
-            <span style={{ fontSize: 15, lineHeight: 1 }}>►</span>
-            <span style={{ fontSize: 8, opacity: 0.8 }}>[E]</span>
-          </button>
-        </div>
-      </div>
-
-      {/* COMPLETION / CRASH MODAL */}
-      {hud.status !== 'ACTIVE' && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'rgba(5, 8, 17, 0.82)',
-            backdropFilter: 'blur(12px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10030
-          }}
-        >
-          <div
-            style={{
-              background: 'rgba(10, 14, 23, 0.92)',
-              border: `1px solid ${hud.status === 'DELIVERED' ? '#2ecc71' : '#ef4444'}`,
-              borderRadius: 16,
-              padding: '32px 40px',
-              textAlign: 'center',
-              maxWidth: 440,
-              color: '#fff',
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)'
-            }}
-          >
-            <h2
-              style={{
-                margin: '0 0 12px 0',
-                fontFamily: "'Space Mono', monospace",
-                fontSize: 20,
-                color: hud.status === 'DELIVERED' ? '#2ecc71' : '#ef4444'
-              }}
-            >
-              {hud.status === 'DELIVERED'
-                ? '✅ PORT TERMINAL GATE-IN COMPLETE'
-                : '💥 FREIGHT HAUL FAILED'}
-            </h2>
-            <p style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
-              {hud.status === 'DELIVERED'
-                ? `Container hauled from ${originHub} to Davao Port Terminal with ${formatTimer(
-                    hud.timeLeft
-                  )} remaining! Cargo Integrity: ${hud.health}%.`
-                : hud.failReason}
-            </p>
-            <button
-              onClick={() =>
-                onComplete({
-                  success: hud.status === 'DELIVERED',
-                  finalHealth: hud.status === 'DELIVERED' ? hud.health : 0
-                })
-              }
-              style={{
-                background: hud.status === 'DELIVERED' ? '#2ecc71' : '#ef4444',
-                color: '#0a0e17',
-                fontWeight: 700,
-                border: 'none',
-                padding: '12px 28px',
-                borderRadius: 8,
-                cursor: 'pointer',
-                fontFamily: "'Space Mono', monospace",
-                fontSize: 13,
-                width: '100%'
-              }}
-            >
-              LOAD ONTO SEA VESSEL (RETURN TO MAP)
-            </button>
+            ►
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

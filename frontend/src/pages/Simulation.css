@@ -374,7 +374,7 @@
   position: absolute;
   top: 24px;
   right: 24px;
-  width: 380px;
+  width: 390px;
   max-height: calc(100vh - 104px);
   background: var(--bg-panel); 
   backdrop-filter: blur(16px);
@@ -385,7 +385,9 @@
   display: flex;
   flex-direction: column;
   padding: 18px 20px; 
-  overflow: hidden;
+  padding-bottom: 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
   transform: translateX(110%);
   opacity: 0;
   pointer-events: none;
@@ -409,8 +411,12 @@
   transition: none !important;
 }
 
-.floating-side-panel::-webkit-scrollbar { width: 4px; }
-.floating-side-panel::-webkit-scrollbar-thumb { background: var(--border-heavy); border-radius: 4px; }
+.floating-side-panel::-webkit-scrollbar,
+.sim-export-form::-webkit-scrollbar { width: 5px; }
+.floating-side-panel::-webkit-scrollbar-track,
+.sim-export-form::-webkit-scrollbar-track { background: transparent; }
+.floating-side-panel::-webkit-scrollbar-thumb,
+.sim-export-form::-webkit-scrollbar-thumb { background: rgba(130, 160, 255, 0.2); border-radius: 4px; }
 
 .panel-header {
   display: flex;
@@ -575,37 +581,48 @@
 .sim-export-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 11px;
   overflow-y: auto;
-  padding-bottom: 8px;
+  padding-right: 4px;
+  margin-right: -4px;
+  padding-bottom: 6px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+  min-width: 0;
 }
 
 .form-group label {
-  font-size: 0.72rem;
+  font-size: 10.5px;
+  line-height: 1.2;
   color: var(--text-secondary) !important;
   text-transform: uppercase;
   font-weight: 700;
   font-family: var(--font-sans);
-  letter-spacing: 0.6px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .modern-input,
 .modern-select {
   width: 100%;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03) !important;
+  height: 38px;
+  padding: 0 10px;
+  background: rgba(15, 23, 42, 0.6) !important;
   border: 1px solid var(--border-color) !important;
   border-radius: 8px;
   color: var(--text-primary) !important;
   font-family: var(--font-sans);
-  font-size: 0.85rem;
+  font-size: 12px;
   box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: all 0.2s ease;
 }
 
@@ -805,6 +822,44 @@
   border-radius: 8px;
   font-weight: 700;
   text-align: center;
+}
+
+/* Module 1: Incoterms 2020 Advisory Tag & VGM Gantry Crane Badge */
+.incoterm-advisory-tag,
+.vgm-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 8px 12px;
+  background: rgba(130, 160, 255, 0.05);
+  border: 1px solid rgba(130, 160, 255, 0.15);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.incoterm-advisory-tag {
+  margin-top: 2px;
+  border-left: 3px solid var(--accent-blue);
+}
+
+.vgm-badge {
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.2px;
+}
+
+.vgm-badge.vgm-verified {
+  color: var(--accent-green);
+  background: rgba(130, 160, 255, 0.05);
+  border-color: rgba(46, 204, 113, 0.28);
+}
+
+.vgm-badge.vgm-overload {
+  color: var(--accent-critical);
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.45);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.15);
 }
 
 .btn-launch-sim {

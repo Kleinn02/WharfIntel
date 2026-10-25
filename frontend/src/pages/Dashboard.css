@@ -75,6 +75,24 @@
   /* NO transition on width here! This kills the Leaflet lag. */
 }
 
+.map-view.dashboard-lms-route { overflow: hidden; }
+
+.dashboard-wrapper.instructor-lms-layout .sidebar { display: none; }
+.dashboard-wrapper.instructor-lms-layout .map-view { width: 100vw; margin-left: 0; }
+
+.dashboard-route-content {
+  position: absolute;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-main);
+}
+
 /* --- Reverted Simulation Button Outline Style --- */
 .sim-btn {
   border: 1px solid var(--accent-color) !important;
