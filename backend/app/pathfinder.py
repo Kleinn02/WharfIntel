@@ -56,7 +56,7 @@ WAYPOINTS = {
     "WP_JAVA_SEA": (-4.5, 113.0),        
     "WP_MALACCA": (3.0, 101.0),
 
-    # --- DESTINATIONS ---
+    # --- DESTINATIONS (COMPLETE 11-NATION ASEAN / SEA NETWORK) ---
     "Singapore": (1.290, 103.850),
     "Bangkok, Thailand": (13.756, 100.501),
     "Manila, Philippines": (14.599, 120.984),
@@ -64,7 +64,10 @@ WAYPOINTS = {
     "Ho Chi Minh, Vietnam": (10.823, 106.629),
     "Yangon, Myanmar": (16.840, 96.145),
     "Muara, Brunei": (5.027, 115.064),
-    "Dili, Timor-Leste": (-8.558, 125.573)
+    "Dili, Timor-Leste": (-8.558, 125.573),
+    "Port Klang, Malaysia": (2.999, 101.392),
+    "Sihanoukville, Cambodia": (10.640, 103.520),
+    "Vientiane, Laos": (17.975, 102.633)
 }
 
 # 🟢 GRAPH 1: STANDARD OPERATIONS (Strictly Fast / One-Way)
@@ -84,12 +87,13 @@ GRAPH = {
     
     "WP_SULU_SEA_MAIN": ["WP_SOUTH_CHINA_SEA_MAIN", "Manila, Philippines"],
     
-    # 🔥 FIX: Re-added WP_NATUNA_SEA to the South China Sea so Myanmar routes can connect!
-    "WP_SOUTH_CHINA_SEA_MAIN": ["Ho Chi Minh, Vietnam", "WP_THAILAND_ROUTE_1", "Muara, Brunei", "WP_NATUNA_SEA"],
+    # 🔥 FIX: Re-added WP_NATUNA_SEA and Sihanoukville to the South China Sea!
+    "WP_SOUTH_CHINA_SEA_MAIN": ["Ho Chi Minh, Vietnam", "Sihanoukville, Cambodia", "WP_THAILAND_ROUTE_1", "Muara, Brunei", "WP_NATUNA_SEA"],
 
-    # THAILAND
-    "WP_THAILAND_ROUTE_1": ["WP_THAILAND_ROUTE_2"],
+    # THAILAND, CAMBODIA & LAOS CORRIDORS
+    "WP_THAILAND_ROUTE_1": ["WP_THAILAND_ROUTE_2", "Sihanoukville, Cambodia"],
     "WP_THAILAND_ROUTE_2": ["Bangkok, Thailand"],
+    "Bangkok, Thailand": ["Vientiane, Laos"],
 
     # JAKARTA
     "WP_MAKASSAR_STRAIT": ["WP_JAKARTA_ROUTE_2"],
@@ -100,11 +104,11 @@ GRAPH = {
     "WP_DILI_ROUTE_1": ["WP_DILI_ROUTE_2"],
     "WP_DILI_ROUTE_2": ["Dili, Timor-Leste"],
 
-    # MYANMAR & SINGAPORE WIRING
+    # MYANMAR, MALAYSIA & SINGAPORE WIRING
     "WP_NATUNA_SEA": ["WP_MYANMAR_ROUTE_1", "Singapore"],
     "WP_MYANMAR_ROUTE_1": ["WP_MYANMAR_ROUTE_2"],
     "WP_MYANMAR_ROUTE_2": ["WP_MALACCA"],
-    "WP_MALACCA": ["Singapore", "WP_MYANMAR_ROUTE_3"],
+    "WP_MALACCA": ["Singapore", "Port Klang, Malaysia", "WP_MYANMAR_ROUTE_3"],
     "WP_MYANMAR_ROUTE_3": ["Yangon, Myanmar"]
 }
 
@@ -128,20 +132,23 @@ REROUTE_GRAPH = {
     
     "WP_SULU_SEA_MAIN": ["WP_SOUTH_CHINA_SEA_MAIN", "Manila, Philippines", "WP_SARANGANI"],
     
-    # 🔥 FIX: Re-added WP_NATUNA_SEA so U-Turns work for Myanmar
-    "WP_SOUTH_CHINA_SEA_MAIN": ["Ho Chi Minh, Vietnam", "WP_THAILAND_ROUTE_1", "Muara, Brunei", "WP_NATUNA_SEA", "WP_SULU_SEA_MAIN"],
+    # 🔥 FIX: Re-added WP_NATUNA_SEA and Sihanoukville so U-Turns work across ASEAN
+    "WP_SOUTH_CHINA_SEA_MAIN": ["Ho Chi Minh, Vietnam", "Sihanoukville, Cambodia", "WP_THAILAND_ROUTE_1", "Muara, Brunei", "WP_NATUNA_SEA", "WP_SULU_SEA_MAIN"],
 
     "WP_CELEBES_SEA": ["WP_SULU_SEA_SOUTH", "WP_SARANGANI"],
     "WP_SULU_SEA_SOUTH": ["WP_SOUTH_CHINA_SEA_SOUTH", "Muara, Brunei", "WP_CELEBES_SEA"],
-    "WP_SOUTH_CHINA_SEA_SOUTH": ["Ho Chi Minh, Vietnam", "WP_THAILAND_ROUTE_1", "Muara, Brunei", "WP_NATUNA_SEA", "WP_SULU_SEA_SOUTH"],
+    "WP_SOUTH_CHINA_SEA_SOUTH": ["Ho Chi Minh, Vietnam", "Sihanoukville, Cambodia", "WP_THAILAND_ROUTE_1", "Muara, Brunei", "WP_NATUNA_SEA", "WP_SULU_SEA_SOUTH"],
 
     "WP_BRUNEI_ROUTE_1": ["WP_BRUNEI_ROUTE_2", "WP_SARANGANI"],
     "WP_BRUNEI_ROUTE_2": ["WP_BRUNEI_ROUTE_3", "WP_BRUNEI_ROUTE_1"],
     "WP_BRUNEI_ROUTE_3": ["WP_BRUNEI_ROUTE_4", "WP_BRUNEI_ROUTE_2"],
     "WP_BRUNEI_ROUTE_4": ["Muara, Brunei", "WP_BRUNEI_ROUTE_3"],
 
-    "WP_THAILAND_ROUTE_1": ["WP_THAILAND_ROUTE_2", "WP_SOUTH_CHINA_SEA_MAIN", "WP_SOUTH_CHINA_SEA_SOUTH"],
+    "WP_THAILAND_ROUTE_1": ["WP_THAILAND_ROUTE_2", "Sihanoukville, Cambodia", "WP_SOUTH_CHINA_SEA_MAIN", "WP_SOUTH_CHINA_SEA_SOUTH"],
     "WP_THAILAND_ROUTE_2": ["Bangkok, Thailand", "WP_THAILAND_ROUTE_1"],
+    "Bangkok, Thailand": ["Vientiane, Laos", "WP_THAILAND_ROUTE_2"],
+    "Sihanoukville, Cambodia": ["WP_THAILAND_ROUTE_1", "WP_SOUTH_CHINA_SEA_MAIN"],
+    "Vientiane, Laos": ["Bangkok, Thailand"],
 
     "WP_MAKASSAR_STRAIT": ["WP_JAKARTA_ROUTE_2", "WP_JAKARTA_ROUTE_1"],
     "WP_JAKARTA_ROUTE_2": ["WP_JAVA_SEA", "WP_MAKASSAR_STRAIT"],
@@ -150,11 +157,12 @@ REROUTE_GRAPH = {
     "WP_DILI_ROUTE_1": ["WP_DILI_ROUTE_2", "WP_JAKARTA_ROUTE_1"],
     "WP_DILI_ROUTE_2": ["Dili, Timor-Leste", "WP_DILI_ROUTE_1"],
 
-    # 🔥 FIX: Wired the Natuna Sea and Malacca Strait for bi-directional Myanmar routing
+    # 🔥 FIX: Wired the Natuna Sea and Malacca Strait for bi-directional Myanmar & Malaysia routing
     "WP_NATUNA_SEA": ["WP_MYANMAR_ROUTE_1", "Singapore", "WP_SOUTH_CHINA_SEA_MAIN", "WP_SOUTH_CHINA_SEA_SOUTH"],
     "WP_MYANMAR_ROUTE_1": ["WP_MYANMAR_ROUTE_2", "WP_NATUNA_SEA"],
     "WP_MYANMAR_ROUTE_2": ["WP_MALACCA", "WP_MYANMAR_ROUTE_1"],
-    "WP_MALACCA": ["Singapore", "WP_MYANMAR_ROUTE_3", "WP_MYANMAR_ROUTE_2"],
+    "WP_MALACCA": ["Singapore", "Port Klang, Malaysia", "WP_MYANMAR_ROUTE_3", "WP_MYANMAR_ROUTE_2"],
+    "Port Klang, Malaysia": ["WP_MALACCA"],
     "WP_MYANMAR_ROUTE_3": ["Yangon, Myanmar", "WP_MALACCA"]
 }
 

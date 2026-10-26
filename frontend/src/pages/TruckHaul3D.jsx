@@ -3,16 +3,19 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 const CAMERA_MODES = [
-  { id: 1, key: '1', label: 'DRONE CHASE' },
-  { id: 2, key: '2', label: 'IN-CAB POV' },
-  { id: 3, key: '3', label: 'ROADSIDE CCTV' },
-  { id: 4, key: '4', label: 'FREE ORBIT' }
+  { id: 1, key: '1', label: 'CHASE' },
+  { id: 2, key: '2', label: 'IN-CAB' },
+  { id: 3, key: '3', label: 'CCTV' },
+  { id: 4, key: '4', label: 'ORBIT' }
 ];
 
 const TruckHaul3D = ({
+  shipId = 'TRK-DEFAULT',
   weatherState = 'NOMINAL',
   cargo = 'Cavendish Bananas',
+  category = 'Perishable (Food)',
   weightKg = 2500,
+  teuCount: propTeuCount,
   originHub = 'Central Cold Storage',
   initialHealth = 100,
   remainingSeconds = 1420,
@@ -29,15 +32,59 @@ const TruckHaul3D = ({
   const [cameraMode, setCameraMode] = useState(1); // 1: Drone Chase, 2: In-Cab, 3: CCTV, 4: Free Orbit
   const cameraModeRef = useRef(1);
 
-  const [simSpeed, setSimSpeed] = useState(1); // 1x or 2x
+  const [simSpeed, setSimSpeed] = useState(1); // Supports 1x, 2x, 5x
   const simSpeedRef = useRef(1);
+  const fastForwardRef = useRef(false);
 
-  const teuCount = Math.max(1, Math.ceil((Number(weightKg) || 2500) / 25000));
+  // 3D Gate Arrival Sequence State (3.5s automated cutscene)
+  const [isGateSequence, setIsGateSequence] = useState(false);
+  const isGateSequenceRef = useRef(false);
+  const gateElapsedRef = useRef(0);
+
+  const teuCount = Math.max(
+    1,
+    Number(propTeuCount) || Math.ceil((Number(weightKg) || 2500) / 25000)
+  );
+  const catLower = String(category || '').toLowerCase();
+  const isElectronics = catLower.includes('electronic');
+  const isRawMaterials = catLower.includes('raw');
   const isPerishable =
-    originHub.toLowerCase().includes('cold') ||
-    cargo.toLowerCase().includes('banana') ||
-    cargo.toLowerCase().includes('food') ||
-    cargo.toLowerCase().includes('perishable');
+    !isElectronics &&
+    !isRawMaterials &&
+    (catLower.includes('perishable') ||
+      originHub.toLowerCase().includes('cold') ||
+      cargo.toLowerCase().includes('banana') ||
+      cargo.toLowerCase().includes('food'));
+
+  // Helper: Resolve Dynamic Hinterland Zone Checkpoint from Loop Progress (0% - 100%)
+  const resolveCorridorZone = (progressPct, reeferTempVal) => {
+    if (progressPct < 25) {
+      return {
+        code: 'ZONE A',
+        title: 'ZONE A: ORIGIN CONSOLIDATION DEPOT',
+        badges: ['[CONTAINER GRADE A INSPECTED]', '[LASHING SECURED]']
+      };
+    }
+    if (progressPct < 50) {
+      return {
+        code: 'ZONE B',
+        title: 'ZONE B: REGIONAL WEIGHBRIDGE & SOLAS VGM',
+        badges: ['[VGM COMPLIANCE: VERIFIED < 25,000 KG/TEU]']
+      };
+    }
+    if (progressPct < 75) {
+      return {
+        code: 'ZONE C',
+        title: 'ZONE C: INTER-CITY HINTERLAND HIGHWAY',
+        badges: ['[SPEED: ~35 KM/H]', `[REEFER TEMP: ${reeferTempVal}°C OPTIMAL]`]
+      };
+    }
+    return {
+      code: 'ZONE D',
+      title: 'ZONE D: PORT TERMINAL GATE APPROACH',
+      badges: ['[DAVAO PORT TERMINAL — GATE-IN APPOINTMENT]']
+    };
+  };
 
   useEffect(() => {
     if (weatherState) {
@@ -85,7 +132,11 @@ const TruckHaul3D = ({
     nextLightLabel: 'MIDWAY CROSSING',
     progress: 0,
     lapCount: 1,
-    cutoffTimer: Math.max(0, Math.ceil(remainingSeconds)), // Synchronized Gate Appointment Countdown
+    simHoursElapsed: 0,
+    simDay: 1,
+    zoneTitle: 'ZONE A: ORIGIN CONSOLIDATION DEPOT',
+    zoneBadges: ['[CONTAINER GRADE A INSPECTED]', '[LASHING SECURED]'],
+    cutoffTimer: Math.max(0, Math.ceil(remainingSeconds)),
     health: Math.round(initialHealth)
   });
 
@@ -104,10 +155,33 @@ const TruckHaul3D = ({
     setCameraMode(modeId);
   };
 
+  // Cycle 1x -> 2x -> 5x -> 1x
   const toggleSimSpeed = () => {
-    const next = simSpeedRef.current === 1 ? 2 : 1;
+    const cur = simSpeedRef.current;
+    const next = cur === 1 ? 2 : cur === 2 ? 5 : 1;
     simSpeedRef.current = next;
     setSimSpeed(next);
+  };
+
+  // Pedagogical Fast-Forward to Port Gate (Advances to 100% / 48H and triggers Gate Arrival)
+  const handleFastForwardToGate = () => {
+    fastForwardRef.current = true;
+    setHud((prev) => ({
+      ...prev,
+      progress: 100,
+      simHoursElapsed: 48,
+      simDay: 2,
+      zoneTitle: 'ZONE D: PORT TERMINAL GATE APPROACH',
+      zoneBadges: ['[DAVAO PORT TERMINAL — GATE-IN APPOINTMENT]'],
+      navStatus: 'PORT GATE ARRIVAL CONFIRMED — OPENING PORTFLOW TICKETING'
+    }));
+    if (onComplete) {
+      onComplete({
+        success: true,
+        finalHealth: 100,
+        stage: 'PORT_GATE_ARRIVED'
+      });
+    }
   };
 
   useEffect(() => {
@@ -273,6 +347,99 @@ const TruckHaul3D = ({
     portYard.rotation.x = -Math.PI / 2;
     portYard.position.set(-565, 0.025, -200);
     scene.add(portYard);
+
+    // ==========================================
+    // 2B. DEDICATED RIGHT-HAND PORT ACCESS LANE & SECURITY GATE GANTRY
+    // ==========================================
+    // Dedicated Asphalt Slip-Lane branching West (-X) off Leg 3 (X = -530 -> -580 at Z = -175)
+    const gateSlipShoulder = new THREE.Mesh(new THREE.PlaneGeometry(58, 28), shoulderMat);
+    gateSlipShoulder.rotation.x = -Math.PI / 2;
+    gateSlipShoulder.position.set(-556, 0.022, -175);
+    scene.add(gateSlipShoulder);
+
+    const gateSlipAsphalt = new THREE.Mesh(new THREE.PlaneGeometry(54, 22), asphaltMat);
+    gateSlipAsphalt.rotation.x = -Math.PI / 2;
+    gateSlipAsphalt.position.set(-556, 0.028, -175);
+    scene.add(gateSlipAsphalt);
+
+    // Cyan Guide Stripes & White Weighbridge Stop-Line on the Access Lane (at X = -555)
+    [-8.5, 8.5].forEach((gz) => {
+      const guideLine = new THREE.Mesh(new THREE.PlaneGeometry(42, 0.3), cyanGuideMat);
+      guideLine.rotation.x = -Math.PI / 2;
+      guideLine.position.set(-555, 0.045, -175 + gz);
+      scene.add(guideLine);
+    });
+
+    const gateStopLine = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 16.5), whiteLineMat);
+    gateStopLine.rotation.x = -Math.PI / 2;
+    gateStopLine.position.set(-555, 0.05, -175);
+    scene.add(gateStopLine);
+
+    // Security Guard Booth beside the Access Lane
+    const guardBooth = new THREE.Mesh(
+      new THREE.BoxGeometry(5.5, 4.2, 4.2),
+      new THREE.MeshLambertMaterial({ color: 0x1e293b })
+    );
+    guardBooth.position.set(-554, 2.1, -187.5);
+    scene.add(guardBooth);
+
+    const boothRoof = new THREE.Mesh(
+      new THREE.BoxGeometry(6.2, 0.45, 4.8),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+    );
+    boothRoof.position.set(-554, 4.35, -187.5);
+    scene.add(boothRoof);
+
+    // Relocated Security Gate Gantry rotated to face Eastbound/Westbound Access Lane (rotation.y = Math.PI / 2)
+    const gateGantryGroup = new THREE.Group();
+    gateGantryGroup.position.set(-562, 0, -175);
+    gateGantryGroup.rotation.y = Math.PI / 2;
+
+    const gatePillarMat = new THREE.MeshLambertMaterial({ color: 0x334155 });
+    const barrierMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const chevronBlackMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+
+    // Left and Right Gantry Columns
+    [-11, 11].forEach((gx) => {
+      const col = new THREE.Mesh(new THREE.BoxGeometry(1.6, 11, 1.6), gatePillarMat);
+      col.position.set(gx, 5.5, 0);
+      gateGantryGroup.add(col);
+    });
+
+    // Overhead Header Signboard
+    const gantryHeader = new THREE.Mesh(new THREE.BoxGeometry(24, 2.2, 1.8), gatePillarMat);
+    gantryHeader.position.set(0, 11, 0);
+    gateGantryGroup.add(gantryHeader);
+
+    // Overhead OCR Camera Housing & Active Strobe Light
+    const ocrBox = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 1.2, 1.4),
+      new THREE.MeshLambertMaterial({ color: 0x0284c7 })
+    );
+    ocrBox.position.set(0, 9.6, 0.8);
+    gateGantryGroup.add(ocrBox);
+
+    const ocrStrobeLight = new THREE.PointLight(0x38bdf8, 0, 28);
+    ocrStrobeLight.position.set(0, 9.0, 2.2);
+    gateGantryGroup.add(ocrStrobeLight);
+
+    // Animated Barrier Pivot Group (Spans across the dedicated access lane)
+    const barrierPivot = new THREE.Group();
+    barrierPivot.position.set(-8.8, 1.4, 1.6);
+    gateGantryGroup.add(barrierPivot);
+
+    const barrierArm = new THREE.Mesh(new THREE.BoxGeometry(17.6, 0.35, 0.22), barrierMat);
+    barrierArm.position.set(8.8, 0, 0);
+    barrierPivot.add(barrierArm);
+
+    // Diagonal Chevron Stripes along the Barrier Arm
+    [-5.5, -1.8, 1.8, 5.5].forEach((cx) => {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.38, 0.25), chevronBlackMat);
+      stripe.position.set(8.8 + cx, 0, 0);
+      barrierPivot.add(stripe);
+    });
+
+    scene.add(gateGantryGroup);
 
     const craneMat = new THREE.MeshLambertMaterial({ color: 0xeab308 });
     [-24, 24].forEach((cz) => {
@@ -449,7 +616,9 @@ const TruckHaul3D = ({
     const whiteCabMat = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
     const chassisMat = new THREE.MeshLambertMaterial({ color: 0x1e293b });
     const windshieldMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
-    const blueTrailerMat = new THREE.MeshLambertMaterial({ color: 0x0284c7 });
+    // Category-specific container color: Perishable (Blue w/ White Reefer), Electronics (Deep Navy), Raw Materials (Emerald Green)
+    const trailerHex = isPerishable ? 0x0284c7 : isElectronics ? 0x1e3a8a : 0x059669;
+    const blueTrailerMat = new THREE.MeshLambertMaterial({ color: trailerHex });
 
     const frameMesh = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.9, 8.8), chassisMat);
     frameMesh.position.set(0, 1.1, 0);
@@ -530,6 +699,7 @@ const TruckHaul3D = ({
 
     const reeferUnit = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 0.9), whiteCabMat);
     reeferUnit.position.set(0, 4.2, -0.8);
+    reeferUnit.visible = isPerishable;
     trailerTiltGroup.add(reeferUnit);
 
     const tlTrailerBlinker = new THREE.Mesh(blinkerGeo, leftBlinkerMat);
@@ -768,16 +938,43 @@ const TruckHaul3D = ({
       { x: 10, z: 5, leg: 7, turnAfter: 'OFF', label: 'ORIGIN COLD STORAGE APPROACH (RHS)' }
     ];
 
+    // Persist loop progression, world coordinates, and headings scoped strictly by shipment ID
+    const keyPrefix = `wharf_truck_${shipId}`;
+    const rawSavedX = localStorage.getItem(`${keyPrefix}_x`);
+    const rawSavedZ = localStorage.getItem(`${keyPrefix}_z`);
+    const savedWp = localStorage.getItem(`${keyPrefix}_wp`);
+    const savedLaps = localStorage.getItem(`${keyPrefix}_laps`);
+    const savedCabHeading = localStorage.getItem(`${keyPrefix}_cab_hdg`);
+    const savedTrailerHeading = localStorage.getItem(`${keyPrefix}_trl_hdg`);
+
+    // If no coordinates are saved for this shipment, it is a newly deployed order:
+    // always start cleanly at Central Cold Storage (10, 10) facing Northbound (-Z) toward Waypoint 0
+    const isNewDeployment = rawSavedX === null || rawSavedZ === null;
+
+    const initX = isNewDeployment ? 10 : Number(rawSavedX);
+    const initZ = isNewDeployment ? 10 : Number(rawSavedZ);
+    const initCabHdg = isNewDeployment ? 0 : (Number(savedCabHeading) || 0);
+    const initTrlHdg = isNewDeployment ? 0 : (Number(savedTrailerHeading) || 0);
+    const initWp = isNewDeployment ? 0 : Math.min(Number(savedWp) || 0, waypoints.length - 1);
+
+    cabGroup.position.set(initX, 0, initZ);
+    cabGroup.rotation.y = initCabHdg;
+
+    const initFifthWheelX = initX + Math.sin(initCabHdg) * 2.4;
+    const initFifthWheelZ = initZ + Math.cos(initCabHdg) * 2.4;
+    trailerGroup.position.set(initFifthWheelX, 0, initFifthWheelZ);
+    trailerGroup.rotation.y = initTrlHdg;
+
     const autoState = {
-      wpIndex: 0,
+      wpIndex: initWp,
       speedKmh: 35,
       targetSpeedKmh: 35,
-      cabHeading: 0,
-      trailerHeading: 0,
+      cabHeading: initCabHdg,
+      trailerHeading: initTrlHdg,
       steerAngleDeg: 0,
       rollAngleDeg: 0,
       blinker: 'OFF',
-      lapCount: 1,
+      lapCount: isNewDeployment ? 1 : (Number(savedLaps) || 1),
       cutoffTimer: Math.max(0, Number(remainingSeconds) || 1420)
     };
 
@@ -902,17 +1099,20 @@ const TruckHaul3D = ({
         tl.greenBulbs.forEach((m) => m.color.setHex(isG ? 0x2ecc71 : 0x052a10));
       });
 
-      // 3. Waypoint Progression & Traffic Signal Stop-Line Detection
+      // 3. Waypoint Progression (Speed-Adaptive Hit Radius) & Traffic Signal Stop-Line Detection
       const targetWp = waypoints[autoState.wpIndex];
       const dx = targetWp.x - cabGroup.position.x;
       const dz = targetWp.z - cabGroup.position.z;
       const distToWp = Math.hypot(dx, dz);
 
-      if (distToWp < 11) {
+      const turnHitRadius = Math.max(16, (autoState.speedKmh / 35) * simSpeedRef.current * 14);
+      if (distToWp < turnHitRadius) {
         autoState.wpIndex = (autoState.wpIndex + 1) % waypoints.length;
         if (autoState.wpIndex === 0) {
           autoState.lapCount += 1;
+          localStorage.setItem(`wharf_truck_${shipId}_laps`, autoState.lapCount.toString());
         }
+        localStorage.setItem(`wharf_truck_${shipId}_wp`, autoState.wpIndex.toString());
       }
 
       const activeWp = waypoints[autoState.wpIndex];
@@ -963,13 +1163,90 @@ const TruckHaul3D = ({
         }
       }
 
-      // Smooth acceleration / deceleration
-      const accelRate = desiredSpeed < autoState.speedKmh ? 4.2 : 2.0;
-      autoState.speedKmh = THREE.MathUtils.lerp(autoState.speedKmh, desiredSpeed, accelRate * dt);
-      if (autoState.speedKmh < 0.3 && desiredSpeed === 0) autoState.speedKmh = 0;
+      // 3D 5-Second Right-Turn Gate Arrival Cutscene Handler (0.0s – 5.0s)
+      let gateTargetX = activeWp.x;
+      let gateTargetZ = activeWp.z;
 
-      // 4. Pure-Pursuit Steering & Kinematics
-      const desiredHeading = Math.atan2(-toWpX, -toWpZ);
+      if (isGateSequenceRef.current) {
+        gateElapsedRef.current += rawDt;
+        const gTime = gateElapsedRef.current;
+
+        // Frame 0 Initialization: Stage truck on Leg 3 highway approaching the right-hand slip lane
+        if (gTime <= rawDt * 1.5) {
+          cabGroup.position.set(-530, 0, -198);
+          autoState.cabHeading = Math.PI; // Facing Southbound (+Z) along Leg 3
+          autoState.trailerHeading = Math.PI;
+          cabGroup.rotation.y = Math.PI;
+          trailerGroup.position.set(-530, 0, -200.4);
+          trailerGroup.rotation.y = Math.PI;
+          autoState.speedKmh = 23;
+          barrierPivot.rotation.z = 0;
+        }
+
+        // Phase 1 (0.0s – 1.5s): Decelerate to ~18 km/h & steer right into the dedicated access lane
+        if (gTime < 1.5) {
+          desiredSpeed = 19;
+          gateTargetX = -544;
+          gateTargetZ = -175;
+        }
+        // Phase 2 (1.5s – 2.6s): Straighten along access lane (-X) & brake to halt at Stop-Line (X = -554)
+        else if (gTime < 2.6) {
+          gateTargetX = -562;
+          gateTargetZ = -175;
+          const distToStopLine = Math.max(0, cabGroup.position.x - -553.5);
+          desiredSpeed = distToStopLine > 0.6 ? Math.min(16, distToStopLine * 2.1) : 0;
+        }
+        // Phases 3 & 4 (2.6s – 5.0s): Dead stop at Weighbridge Stop-Line
+        else {
+          desiredSpeed = 0;
+          gateTargetX = -565;
+          gateTargetZ = -175;
+        }
+
+        autoState.speedKmh = THREE.MathUtils.lerp(
+          autoState.speedKmh,
+          desiredSpeed,
+          (desiredSpeed === 0 ? 7.5 : 4.5) * rawDt
+        );
+        if (autoState.speedKmh < 0.25 && desiredSpeed === 0) autoState.speedKmh = 0;
+
+        // Phase 3 (2.6s – 3.8s): Overhead OCR Strobe & Biometric Verification
+        if (gTime >= 2.6 && gTime <= 3.8) {
+          const strobePulse = Math.sin(gTime * 22) > 0.1;
+          ocrStrobeLight.intensity = strobePulse ? 5.0 : 0;
+        } else {
+          ocrStrobeLight.intensity = 0;
+        }
+
+        // Phase 4 (3.8s – 5.0s): Barrier Arm Elevates 90 Degrees Upward (Ease-In-Out)
+        if (gTime >= 3.8) {
+          const pOpen = Math.min(1, (gTime - 3.8) / 1.05);
+          const easeOpen = pOpen * pOpen * (3 - 2 * pOpen);
+          barrierPivot.rotation.z = easeOpen * (Math.PI / 2);
+        }
+
+        // Phase 5 (5.0s): Seamless Handover to PortFlow
+        if (gTime >= 5.0) {
+          isGateSequenceRef.current = false;
+          if (onComplete) {
+            onComplete({
+              success: true,
+              finalHealth: 100,
+              stage: 'PORT_GATE_ARRIVED'
+            });
+          }
+        }
+      } else {
+        // Standard cruise acceleration / deceleration
+        const accelRate = desiredSpeed < autoState.speedKmh ? 4.2 : 2.0;
+        autoState.speedKmh = THREE.MathUtils.lerp(autoState.speedKmh, desiredSpeed, accelRate * dt);
+        if (autoState.speedKmh < 0.3 && desiredSpeed === 0) autoState.speedKmh = 0;
+      }
+
+      // 4. Pure-Pursuit Steering & Kinematics (Uses Gate Access Target during Gate Sequence)
+      const steerVecX = gateTargetX - cabGroup.position.x;
+      const steerVecZ = gateTargetZ - cabGroup.position.z;
+      const desiredHeading = Math.atan2(-steerVecX, -steerVecZ);
       const headingError = normalizeAngle(desiredHeading - autoState.cabHeading);
 
       const targetSteerDeg = THREE.MathUtils.clamp(
@@ -1015,11 +1292,13 @@ const TruckHaul3D = ({
         trailerTiltGroup.rotation.z = THREE.MathUtils.degToRad(autoState.rollAngleDeg);
       }
 
-      // 5. Automated Turn Signals (Activate 3 Seconds Prior to Turn, Cancel on Straight)
+      // 5. Automated Turn Signals (Forces Right Blinker during Phase 1 Gate Turn, Cancels on Alignment)
       const speedMetersPerSec = Math.max(3, autoState.speedKmh * 0.62);
       const secondsToWaypoint = distToActiveWp / speedMetersPerSec;
 
-      if (activeWp.turnAfter !== 'OFF' && secondsToWaypoint <= 3.4) {
+      if (isGateSequenceRef.current) {
+        autoState.blinker = gateElapsedRef.current < 1.5 ? 'RIGHT' : 'OFF';
+      } else if (activeWp.turnAfter !== 'OFF' && secondsToWaypoint <= 3.4) {
         autoState.blinker = activeWp.turnAfter;
       } else if (Math.abs(autoState.steerAngleDeg) > 6) {
         autoState.blinker = autoState.steerAngleDeg > 0 ? 'LEFT' : 'RIGHT';
@@ -1103,7 +1382,33 @@ const TruckHaul3D = ({
       windshield.visible = !isInCab;
       roofSpoiler.visible = !isInCab;
 
-      if (mode === 1) {
+      if (isGateSequenceRef.current) {
+        const gTime = gateElapsedRef.current;
+        if (gTime < 2.3) {
+          // Phases 1 & 2 (0.0s – 2.3s): Elevated Junction Tracking Camera watching the right-hand turn
+          const turnCamPos = new THREE.Vector3(-516, 12.5, -152);
+          camera.position.lerp(turnCamPos, 4.5 * rawDt);
+          camLookTarget.lerp(
+            new THREE.Vector3(cabGroup.position.x - 4, 3.2, cabGroup.position.z),
+            7.5 * rawDt
+          );
+          camera.lookAt(camLookTarget);
+        } else {
+          // Phases 3 & 4 (2.3s – 5.0s): Widened Roadside Security Booth / CCTV perspective
+          // Pulled back & elevated so the full gantry header, flashing OCR strobe, and 90° barrier swing stay in frame
+          const boothCamPos = new THREE.Vector3(
+            cabGroup.position.x - 20,
+            8.5,
+            cabGroup.position.z - 24
+          );
+          camera.position.lerp(boothCamPos, 5.5 * rawDt);
+          camLookTarget.lerp(
+            new THREE.Vector3(-558, 5.2, -175),
+            8.0 * rawDt
+          );
+          camera.lookAt(camLookTarget);
+        }
+      } else if (mode === 1) {
         // [1] Drone Chase Camera
         const followAngle =
           autoState.trailerHeading * 0.65 + autoState.cabHeading * 0.35 + (orb.isRightDown ? orb.yawOffset : 0.22);
@@ -1177,6 +1482,11 @@ const TruckHaul3D = ({
       if (hudAccum > 0.1) {
         hudAccum = 0;
 
+        localStorage.setItem(`${keyPrefix}_x`, cabGroup.position.x.toFixed(2));
+        localStorage.setItem(`${keyPrefix}_z`, cabGroup.position.z.toFixed(2));
+        localStorage.setItem(`${keyPrefix}_cab_hdg`, autoState.cabHeading.toFixed(4));
+        localStorage.setItem(`${keyPrefix}_trl_hdg`, autoState.trailerHeading.toFixed(4));
+
         const speedRounded = Math.round(autoState.speedKmh);
         const rpm =
           speedRounded === 0
@@ -1190,7 +1500,9 @@ const TruckHaul3D = ({
 
         const reeferTemp = isPerishable
           ? Number((-4.2 + Math.sin(simElapsed * 0.4) * 0.1).toFixed(1))
-          : 18.5;
+          : isElectronics
+          ? 22.0
+          : 24.5;
 
         const articulationDeg = Math.round(
           THREE.MathUtils.radToDeg(
@@ -1198,28 +1510,59 @@ const TruckHaul3D = ({
           )
         );
 
-        const routeProgress = Math.min(
-          100,
-          Math.round(((autoState.wpIndex + (1 - Math.min(1, distToActiveWp / 420))) / waypoints.length) * 100)
+        const routeProgress = fastForwardRef.current
+          ? 100
+          : Math.min(
+              100,
+              Math.round(
+                ((autoState.wpIndex + (1 - Math.min(1, distToActiveWp / 420))) / waypoints.length) * 100
+              )
+            );
+
+        // Calibrate 48-Hour (2-Day) Simulated Hinterland Haul Duration (48 * 3600 * 1000 ms)
+        const TOTAL_HAUL_HOURS = 48;
+        const simHoursElapsed = Math.min(
+          TOTAL_HAUL_HOURS,
+          Math.max(1, Math.round((routeProgress / 100) * TOTAL_HAUL_HOURS))
         );
+        const simDay = simHoursElapsed > 24 ? 2 : 1;
+        const zoneInfo = resolveCorridorZone(routeProgress, reeferTemp);
+
+        const gateNavStatus = isGateSequenceRef.current
+          ? gateElapsedRef.current < 1.5
+            ? 'SIGNALING RIGHT TURN ➔ ENTERING DICT TERMINAL ACCESS LANE'
+            : gateElapsedRef.current < 2.6
+            ? 'ALIGNING CHASSIS • BRAKING FOR WEIGHBRIDGE STOP-LINE'
+            : gateElapsedRef.current < 3.8
+            ? 'DICT TERMINAL GATE 02 • WEIGHBRIDGE & OCR SCAN IN PROGRESS...'
+            : 'OCR RFID VERIFIED • BARRIER CLEARED • ACCESS GRANTED'
+          : `${zoneInfo.title} • ${navBanner}`;
 
         setHud({
           speed: speedRounded,
           rpm,
           fuelRate,
           reeferTemp,
-          compressorStatus: isPerishable ? 'ACTIVE (MODULATING)' : 'STANDBY (AMBIENT)',
+          compressorStatus: isPerishable
+            ? 'ACTIVE (MODULATING)'
+            : isElectronics
+            ? 'SEALED DRY CLIMATE'
+            : 'AMBIENT BULK TRIM',
           gear: speedRounded === 0 ? 'IDLE' : 'D',
           steerDeg: Math.round(autoState.steerAngleDeg),
           articulationDeg,
           blinker: autoState.blinker,
           blinkOn: blinkWave,
-          navStatus: navBanner,
+          navStatus: gateNavStatus,
           nextLightState: upcomingLight ? upcomingLight.state : 'GREEN',
           nextLightDist: upcomingLight ? Math.max(0, Math.round(stopDist)) : 0,
           nextLightLabel: upcomingLight ? upcomingLight.label : 'CORRIDOR CLEAR',
           progress: routeProgress,
           lapCount: autoState.lapCount,
+          simHoursElapsed,
+          simDay,
+          zoneTitle: zoneInfo.title,
+          zoneBadges: zoneInfo.badges,
           cutoffTimer: Math.ceil(autoState.cutoffTimer),
           health: Math.round(initialHealth)
         });
@@ -1241,7 +1584,7 @@ const TruckHaul3D = ({
       window.removeEventListener('resize', onResize);
       renderer.dispose();
     };
-  }, [weightKg, initialHealth, isPerishable]);
+  }, [shipId, weightKg, initialHealth, isPerishable]);
 
   const formatTimer = (sec) => {
     const m = Math.floor(sec / 60);
@@ -1262,11 +1605,11 @@ const TruckHaul3D = ({
     >
       <div ref={mountRef} style={{ width: '100vw', height: '100vh' }} />
 
-      {/* TOP CENTER PHASE PILL & PORT CUT-OFF WINDOW */}
+      {/* COMPACT TOP CENTER HUD: NON-COLLIDING TELEMETRICS */}
       <div
         style={{
           position: 'absolute',
-          top: 20,
+          top: 18,
           left: '50%',
           transform: 'translateX(-50%)',
           display: 'flex',
@@ -1275,11 +1618,12 @@ const TruckHaul3D = ({
           background: 'rgba(10, 14, 23, 0.88)',
           backdropFilter: 'blur(14px)',
           border: '1px solid rgba(56, 189, 248, 0.28)',
-          borderRadius: 999,
+          borderRadius: 12,
           padding: '8px 20px',
           color: '#f1f5f9',
           zIndex: 10020,
-          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)'
+          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.45)',
+          whiteSpace: 'nowrap'
         }}
       >
         <span
@@ -1294,21 +1638,19 @@ const TruckHaul3D = ({
         <span
           style={{
             fontFamily: "'Space Mono', monospace",
-            fontSize: 11.5,
+            fontSize: 11,
             fontWeight: 700,
-            letterSpacing: 0.6,
-            color: '#38bdf8'
+            color: '#38bdf8',
+            letterSpacing: 0.3
           }}
         >
-          ORIGIN HAUL: DEPOT ➔ PORT TERMINAL
+          HINTERLAND CORRIDOR: 240 KM • DAY {hud.simDay} OF 2 ({hud.simHoursElapsed}H / 48H)
         </span>
         <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
         <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, color: '#cbd5e1' }}>
-          PORT CUT-OFF:{' '}
-          <strong style={{ color: '#2ecc71' }}>{formatTimer(hud.cutoffTimer)}</strong>
+          CUT-OFF: <strong style={{ color: '#2ecc71' }}>{formatTimer(hud.cutoffTimer)}</strong>
         </span>
       </div>
-
       {/* LEFT PANEL: INDUSTRIAL IoT COLD-CHAIN & FLEET TELEMATICS */}
       <div
         style={{
@@ -1556,58 +1898,58 @@ const TruckHaul3D = ({
           </strong>
         </div>
 
-        {/* Compliance Badges */}
+        {/* Streamlined Compliance Badges (Eliminates Duplicate Zone Text) */}
         <div
           style={{
             display: 'flex',
             justifyContent: 'space-between',
-            gap: 6,
+            alignItems: 'center',
             fontFamily: "'Space Mono', monospace",
-            fontSize: 9.5,
-            color: '#94a3b8',
-            background: 'rgba(130, 160, 255, 0.06)',
-            border: '1px solid rgba(130, 160, 255, 0.18)',
-            borderRadius: 6,
-            padding: '6px 8px',
+            fontSize: 10,
+            background: 'rgba(46, 204, 113, 0.06)',
+            border: '1px solid rgba(46, 204, 113, 0.25)',
+            borderRadius: 8,
+            padding: '8px 10px',
             marginBottom: 12
           }}
         >
-          <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>[GRADE A CONTAINER]</span>
-          <span>•</span>
-          <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>[LASHING: SECURED]</span>
+          <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>✓ SOLAS VGM & LASHINGS</span>
+          <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>VERIFIED</span>
         </div>
 
-        {/* Complete Haul -> Vessel Stage CTA */}
+        {/* Consolidated Primary Action Button (Triggers 3D Gate Arrival Animation) */}
         <button
           type="button"
-          onClick={() =>
-            onComplete &&
-            onComplete({
-              success: true,
-              finalHealth: 100
-            })
-          }
+          disabled={isGateSequence}
+          onClick={() => {
+            if (isGateSequence) return;
+            setIsGateSequence(true);
+            isGateSequenceRef.current = true;
+            gateElapsedRef.current = 0;
+          }}
           style={{
             width: '100%',
-            background: '#2ecc71',
-            color: '#060911',
-            border: 'none',
-            padding: '10px 14px',
+            background: isGateSequence ? 'rgba(56, 189, 248, 0.2)' : '#2ecc71',
+            color: isGateSequence ? '#38bdf8' : '#060911',
+            border: isGateSequence ? '1px solid #38bdf8' : 'none',
+            padding: '12px 14px',
             borderRadius: 8,
             fontFamily: "'Space Mono', monospace",
-            fontSize: 11.5,
+            fontSize: 11,
             fontWeight: 700,
-            cursor: 'pointer',
+            cursor: isGateSequence ? 'not-allowed' : 'pointer',
             letterSpacing: 0.4,
-            boxShadow: '0 4px 14px rgba(46, 204, 113, 0.35)',
+            boxShadow: isGateSequence ? 'none' : '0 4px 14px rgba(46, 204, 113, 0.35)',
             transition: 'all 0.2s ease'
           }}
         >
-          COMPLETE HAUL ➔ VESSEL STAGE
+          {isGateSequence
+            ? 'PROCESSING GATE-IN VERIFICATION...'
+            : '[ARRIVE AT PORT GATE ➔ OPEN PORTFLOW]'}
         </button>
       </div>
 
-      {/* TOP RIGHT: MULTI-CAMERA DIRECTOR ([1]-[4]), SPEED TOGGLE & EXIT */}
+      {/* TOP RIGHT: MULTI-CAMERA DIRECTOR ([1]-[4]), 1x/2x/5x SPEED, FAST-FORWARD & EXIT */}
       <div
         style={{
           position: 'absolute',
@@ -1621,7 +1963,38 @@ const TruckHaul3D = ({
         }}
       >
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* 1x / 2x Simulation Speed Toggle */}
+          {/* Skip Button during Gate Sequence */}
+          {isGateSequence && (
+            <button
+              type="button"
+              onClick={() => {
+                isGateSequenceRef.current = false;
+                if (onComplete) {
+                  onComplete({
+                    success: true,
+                    finalHealth: 100,
+                    stage: 'PORT_GATE_ARRIVED'
+                  });
+                }
+              }}
+              style={{
+                height: 36,
+                padding: '0 12px',
+                borderRadius: 10,
+                background: 'rgba(56, 189, 248, 0.16)',
+                border: '1px solid #38bdf8',
+                color: '#38bdf8',
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 10.5,
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              [⏩ SKIP GATE CUTSCENE]
+            </button>
+          )}
+
+          {/* 1x / 2x / 5x Simulation Speed Toggle */}
           <button
             type="button"
             onClick={toggleSimSpeed}
@@ -1630,12 +2003,12 @@ const TruckHaul3D = ({
               padding: '0 12px',
               borderRadius: 10,
               background:
-                simSpeed === 2 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(10, 14, 23, 0.88)',
+                simSpeed > 1 ? 'rgba(56, 189, 248, 0.2)' : 'rgba(10, 14, 23, 0.88)',
               backdropFilter: 'blur(12px)',
               border: `1px solid ${
-                simSpeed === 2 ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)'
+                simSpeed > 1 ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)'
               }`,
-              color: simSpeed === 2 ? '#38bdf8' : '#cbd5e1',
+              color: simSpeed > 1 ? '#38bdf8' : '#cbd5e1',
               fontFamily: "'Space Mono', monospace",
               fontSize: 11,
               fontWeight: 'bold',
@@ -1667,12 +2040,14 @@ const TruckHaul3D = ({
           </button>
         </div>
 
-        {/* Multi-Camera Director Pill Bar */}
+        {/* 2x2 Matrix Camera Director Grid */}
         <div
           style={{
-            display: 'flex',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
             gap: 6,
-            background: 'rgba(10, 14, 23, 0.88)',
+            width: 220,
+            background: 'rgba(11, 17, 32, 0.9)',
             backdropFilter: 'blur(14px)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: 12,
@@ -1687,14 +2062,17 @@ const TruckHaul3D = ({
                 type="button"
                 onClick={() => switchCameraMode(cam.id)}
                 style={{
-                  background: active ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
-                  border: `1px solid ${active ? '#38bdf8' : 'transparent'}`,
+                  background: active ? 'rgba(56, 189, 248, 0.18)' : 'rgba(255, 255, 255, 0.02)',
+                  border: `1px solid ${active ? '#38bdf8' : 'rgba(255, 255, 255, 0.06)'}`,
+                  boxShadow: active ? '0 0 12px rgba(56, 189, 248, 0.28)' : 'none',
                   color: active ? '#38bdf8' : '#94a3b8',
                   borderRadius: 8,
-                  padding: '6px 10px',
+                  padding: '7px 8px',
                   fontFamily: "'Space Mono', monospace",
                   fontSize: 10,
-                  fontWeight: 'bold',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}

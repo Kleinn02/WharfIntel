@@ -6,6 +6,9 @@ import './Simulation.css';
 import AssessmentModal from './AssessmentModal';
 import VesselHelm3D from './VesselHelm3D'; // 🔥 NEW: 3D Boat Physics Simulator
 import TruckHaul3D from './TruckHaul3D'; // 🔥 NEW: 3D Inland Truck Simulator
+import PortFlowModal from './PortFlowModal'; // 🎫 Phase B: PCS/TOS 5-Ticket Clearance Workflow
+import PortTerminal3D from './PortTerminal3D'; // 🏗️ Phase C: 3D Quayside & Gantry Crane Loading Simulation
+import VoyageDebriefModal from './VoyageDebriefModal'; // 📊 Phase D: POD Arrival & LMS Analytics Debrief Modal
 import WeatherHUD from './WeatherHUD'; // 🔥 Add this line
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import TopHUD from './TopHUD';
@@ -16,19 +19,21 @@ const PORT_DATABASE = {
   Local: ["Panabo Wharf", "Davao City Port"],
   National: ["Manila, Philippines", "Cebu Port", "Batangas Terminal"],
   Global: [
-    "Singapore", "Ho Chi Minh, Vietnam", "Bangkok, Thailand", 
-    "Jakarta, Indonesia", "Muara, Brunei", "Yangon, Myanmar", "Dili, Timor-Leste"
+    "Singapore", "Port Klang, Malaysia", "Ho Chi Minh, Vietnam", "Bangkok, Thailand",
+    "Sihanoukville, Cambodia", "Vientiane, Laos", "Jakarta, Indonesia",
+    "Muara, Brunei", "Yangon, Myanmar", "Dili, Timor-Leste"
   ]
 };
 
 const DESTINATION_PRICING = {
   "Panabo Wharf": 500, "Davao City Port": 800,
   "Manila, Philippines": 5000, "Cebu Port": 3500, "Batangas Terminal": 4200,
-  "Singapore": 20000, "Ho Chi Minh, Vietnam": 12000, "Bangkok, Thailand": 15000, 
+  "Singapore": 20000, "Port Klang, Malaysia": 18000, "Ho Chi Minh, Vietnam": 12000,
+  "Bangkok, Thailand": 15000, "Sihanoukville, Cambodia": 13500, "Vientiane, Laos": 16000,
   "Jakarta, Indonesia": 19000, "Muara, Brunei": 11000, "Yangon, Myanmar": 17000, "Dili, Timor-Leste": 6000
 };
 
-// Coordinate lookup for Interactive Route Hover Previews
+// Coordinate lookup for Interactive Route Hover Previews (All 11 ASEAN Nations)
 const DESTINATION_COORDINATES = {
   "Panabo Wharf": [7.300, 125.650],
   "Davao City Port": [7.284, 125.681],
@@ -36,8 +41,11 @@ const DESTINATION_COORDINATES = {
   "Cebu Port": [10.292, 123.901],
   "Batangas Terminal": [13.756, 121.058],
   "Singapore": [1.290, 103.850],
+  "Port Klang, Malaysia": [2.999, 101.392],
   "Ho Chi Minh, Vietnam": [10.823, 106.629],
   "Bangkok, Thailand": [13.756, 100.501],
+  "Sihanoukville, Cambodia": [10.640, 103.520],
+  "Vientiane, Laos": [17.975, 102.633],
   "Jakarta, Indonesia": [-6.208, 106.845],
   "Muara, Brunei": [5.027, 115.064],
   "Yangon, Myanmar": [16.840, 96.145],
@@ -65,8 +73,11 @@ const NATIONAL_HUBS = [
 
 const GLOBAL_HUBS = [
   { id: 101, pos: [1.290, 103.850], name: 'Port of Singapore', type: 'GLOBAL HUB', stat: 'Capacity: 95%', status: 'Active' },
+  { id: 108, pos: [2.999, 101.392], name: 'Port Klang, Malaysia', type: 'GLOBAL HUB', stat: 'Capacity: 91%', status: 'Active' },
   { id: 102, pos: [10.823, 106.629], name: 'Ho Chi Minh Terminal', type: 'REGIONAL HUB', stat: 'Capacity: 80%', status: 'Active' },
   { id: 103, pos: [13.756, 100.501], name: 'Bangkok Logistics', type: 'REGIONAL HUB', stat: 'Capacity: 75%', status: 'Active' },
+  { id: 109, pos: [10.640, 103.520], name: 'Sihanoukville, Cambodia', type: 'REGIONAL HUB', stat: 'Capacity: 74%', status: 'Active' },
+  { id: 110, pos: [17.975, 102.633], name: 'Vientiane Dry Port, Laos', type: 'INLAND LINK', stat: 'Capacity: 68%', status: 'Active' },
   { id: 104, pos: [-6.208, 106.845], name: 'Jakarta Tanjung Priok', type: 'GLOBAL HUB', stat: 'Capacity: 92%', status: 'Active' },
   { id: 105, pos: [5.027, 115.064], name: 'Muara Port, Brunei', type: 'REGIONAL HUB', stat: 'Capacity: 65%', status: 'Active' },
   { id: 106, pos: [16.840, 96.145], name: 'Yangon Port', type: 'REGIONAL HUB', stat: 'Capacity: 70%', status: 'Active' },
@@ -208,6 +219,9 @@ const Simulation = () => {
   const [relaunchEvent, setRelaunchEvent] = useState(null); // 🔥 THE FIX: Added Relaunch State!
   const [assessmentConfig, setAssessmentConfig] = useState(null);
   const [truckSimEvent, setTruckSimEvent] = useState(null); // 🔥 Tracks active 3D Truck Haul
+  const [portFlowEvent, setPortFlowEvent] = useState(null); // 🎫 Tracks active PortFlow Clearance Modal
+  const [craneSimEvent, setCraneSimEvent] = useState(null); // 🏗️ Tracks active 3D Quayside Crane Loading
+  const [debriefEvent, setDebriefEvent] = useState(null); // 📊 Tracks Phase D Post-Voyage Analytics Debrief Modal
   const [useLegacyQuiz, setUseLegacyQuiz] = useState(false); // 🔥 Keeps quiz hidden unless toggled!
   const [ticketForm, setTicketForm] = useState({
     cargo: '',
@@ -364,23 +378,32 @@ const Simulation = () => {
     });
   };
 
-  // 🔥 UNIVERSAL 3D LAUNCHER (Truck on Land 0-20%, Vessel at Sea 20%+)
+  // 🔥 UNIVERSAL 3D LAUNCHER (Explicit Pipeline Stage State Machine)
   const launchManual3DHelm = (shipObj, currentHealthVal) => {
     if (!shipObj) return;
     changeShipSpeed(shipObj.id, 0);
-    const nav = calculateNavigation(shipObj);
-    if (nav.phase.type === 'truck') {
-      setTruckSimEvent({
+    const health = parseFloat(currentHealthVal) || 100;
+
+    // Explicit pipeline stage routing avoids progress percentage collisions
+    const savedStage = localStorage.getItem(`wharf_stage_${shipObj.id}`) || 'HINTERLAND_TRUCK';
+
+    if (savedStage === 'PORTFLOW') {
+      setPortFlowEvent({ event: shipObj, health });
+    } else if (savedStage === 'QUAYSIDE_CRANE') {
+      const savedSlot = localStorage.getItem(`wharf_stowage_${shipObj.id}`) || 'BAY 04 • ROW 02 • TIER 82';
+      setCraneSimEvent({ event: shipObj, health, stowageSlot: savedSlot });
+    } else if (savedStage === 'OCEAN_TRANSIT') {
+      setUseLegacyQuiz(false);
+      setAssessmentConfig({ event: shipObj, type: 'PUSH', health });
+    } else if (savedStage === 'VOYAGE_DEBRIEF') {
+      setDebriefEvent({
         event: shipObj,
-        health: parseFloat(currentHealthVal) || 100
+        health,
+        initialHealth: 100
       });
     } else {
-      setUseLegacyQuiz(false);
-      setAssessmentConfig({
-        event: shipObj,
-        type: 'PUSH',
-        health: parseFloat(currentHealthVal) || 100
-      });
+      // Default initial stage: Hinterland Truck Haul
+      setTruckSimEvent({ event: shipObj, health });
     }
   };
 
@@ -506,7 +529,7 @@ const Simulation = () => {
       const profRes = await fetch(`${API_BASE}/user/${userId}/profile`);
       if (profRes.ok) {
         const data = await profRes.json();
-        setResources({ money: data.money, reputation: data.reputation });
+        setResources({ reputation: data.reputation });
       }
       
       const shipRes = await fetch(`${API_BASE}/admin/ticketing/active?username=${userId}`);
@@ -514,11 +537,18 @@ const Simulation = () => {
         const ships = await shipRes.json();
         const mappedShips = ships.map(s => {
           const shipId = `TRK-${s.id}`;
+          const savedWeight = Number(localStorage.getItem(`wharf_weight_${shipId}`));
+          const resolvedWeight = s.weight_kg || savedWeight || 2500;
+          const savedTeu = Number(localStorage.getItem(`wharf_teu_${shipId}`));
+          const resolvedTeu = s.teu_count || savedTeu || Math.max(1, Math.ceil(resolvedWeight / 25000));
+          const savedIncoterm = localStorage.getItem(`wharf_incoterm_${shipId}`);
           return {
             id: shipId,
             rawId: s.id, 
             cargo: s.cargo_name, 
-            weightKg: s.weight_kg || 2500,
+            weightKg: resolvedWeight,
+            teu_count: resolvedTeu,
+            incoterm: s.incoterm || savedIncoterm || 'CIF',
             cargoType: s.scale, 
             category: s.category, 
             commander: s.commander, 
@@ -619,9 +649,9 @@ const Simulation = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setResources(prev => ({ ...prev, money: data.user_money, reputation: data.reputation }));
-        addTerminalLog(`> INBOUND: ${ship.id} successfully docked. Funds secured.`, 'highlight');
-        setNotification({ title: 'DELIVERY COMPLETE', message: `Cargo delivered! Bulk Payout: $${data.payout.toLocaleString()}`, type: 'success' });
+        setResources(prev => ({ ...prev, reputation: data.reputation }));
+        addTerminalLog(`> INBOUND: ${ship.id} successfully berthed at destination terminal.`, 'highlight');
+        setNotification({ title: 'DELIVERY COMPLETE', message: `Cargo discharged successfully at ${ship.destination}. Operational reputation updated.`, type: 'success' });
         await fetchGameState(); 
       }
     } catch (e) { console.error("Arrival failed", e); }
@@ -677,8 +707,15 @@ const Simulation = () => {
       });
 
       if (res.ok) {
+        const createdData = await res.json();
+        if (createdData?.shipment_id) {
+          const newShipKey = `TRK-${createdData.shipment_id}`;
+          localStorage.setItem(`wharf_weight_${newShipKey}`, String(payload.weight_kg));
+          localStorage.setItem(`wharf_teu_${newShipKey}`, String(payload.teu_count));
+          localStorage.setItem(`wharf_incoterm_${newShipKey}`, String(payload.incoterm));
+        }
         await fetchGameState(); 
-        addTerminalLog(`> OUTBOUND: ${ticketForm.cargo} [${payload.incoterm} • ${payload.teu_count} TEU] dispatched to ${ticketForm.destination}.`, 'highlight');
+        addTerminalLog(`> OUTBOUND: ${ticketForm.cargo} [${payload.incoterm} • ${payload.teu_count} TEU • ${payload.weight_kg.toLocaleString()} kg] dispatched to ${ticketForm.destination}.`, 'highlight');
         setTicketForm({ cargo: '', weight: '1500', destination: '', type: 'Perishable (Food)', scale: 'Global', incoterm: 'CIF', teuCount: 1 });
         
         const newShipsRes = await fetch(`${API_BASE}/admin/ticketing/active?username=${userId}`);
@@ -765,11 +802,7 @@ const Simulation = () => {
     } catch (e) { console.error(e); }
   };
 
-  // 🔥 DYNAMIC UI PRICING: Calculate cost based on weight multiplier
-  const baseRouteCost = DESTINATION_PRICING[ticketForm.destination] || 0;
   const weightKg = Number(ticketForm.weight) || 1500;
-  const weightMultiplier = weightKg / 1000;
-  const currentRouteCost = baseRouteCost * weightMultiplier;
 
   // 🔥 MODULE 1: VGM 25-Ton (25,000 kg) Gantry Crane Rule & TEU Allocation
   const autoMinTeu = Math.max(1, Math.ceil(weightKg / 25000));
@@ -878,9 +911,12 @@ const Simulation = () => {
 
         return (
         <TruckHaul3D
+          shipId={activeShip.id || `TRK-${activeShip.rawId}`}
           weatherState={globalWeather}
           cargo={activeShip.cargo}
-          weightKg={activeShip.weightKg || Number(ticketForm.weight) || 2500}
+          category={activeShip.category}
+          weightKg={activeShip.weightKg}
+          teuCount={activeShip.teu_count}
           originHub={
             activeShip.category && activeShip.category.includes('Perishable')
               ? 'Central Cold Storage'
@@ -897,17 +933,19 @@ const Simulation = () => {
             setTruckSimEvent(null);
 
             if (result.success) {
-              const targetElapsed = activeShip.duration * 0.21;
+              // Advance shipment to 20% mark (Terminal Gate-In cleared)
+              const targetElapsed = activeShip.duration * 0.20;
               const newOffset = targetElapsed - (Date.now() - activeShip.startTime);
               localStorage.setItem(`offset_${activeShip.id}`, newOffset.toString());
 
               const updatedShip = { ...activeShip, timeOffset: newOffset, cargoHealth: result.finalHealth };
               setActiveExports(prev => prev.map(s => s.id === activeShip.id ? updatedShip : s));
 
-              setUseLegacyQuiz(false);
-              setAssessmentConfig({
+              // Lock shipment pipeline into PORTFLOW stage
+              localStorage.setItem(`wharf_stage_${activeShip.id}`, 'PORTFLOW');
+              addTerminalLog(`> GATE-IN: Truck cleared Terminal Gate 02. Opening PortFlow PCS/TOS ticketing.`, 'highlight');
+              setPortFlowEvent({
                 event: updatedShip,
-                type: 'PUSH',
                 health: result.finalHealth
               });
             } else {
@@ -918,7 +956,88 @@ const Simulation = () => {
         );
       })()}
 
+      {/* 🎫 PHASE B: PORTFLOW PCS/TOS 5-TICKET CLEARANCE WORKFLOW */}
+      {portFlowEvent && (
+        <PortFlowModal
+          shipment={portFlowEvent.event}
+          initialHealth={portFlowEvent.health}
+          weatherState={globalWeather}
+          onClose={() => {
+            changeShipSpeed(portFlowEvent.event.id, 1);
+            setPortFlowEvent(null);
+          }}
+          onComplete={(result) => {
+            const activeShip = portFlowEvent.event;
+            setPortFlowEvent(null);
+
+            // Lock shipment pipeline into QUAYSIDE_CRANE stage
+            const slot = result.stowageSlot || 'BAY 04 • ROW 02 • TIER 82';
+            localStorage.setItem(`wharf_stage_${activeShip.id}`, 'QUAYSIDE_CRANE');
+            localStorage.setItem(`wharf_stowage_${activeShip.id}`, slot);
+
+            addTerminalLog(
+              `> QUAYSIDE: Stowage plan locked [${slot}]. Transferring container to Berth 02 for crane loading.`,
+              'highlight'
+            );
+            setCraneSimEvent({
+              event: activeShip,
+              health: result.finalHealth,
+              stowageSlot: slot
+            });
+          }}
+        />
+      )}
+
+      {/* 🏗️ PHASE C: 3D QUAYSIDE GANTRY CRANE CONTAINER LOADING SIMULATION */}
+      {craneSimEvent && (
+        <PortTerminal3D
+          shipment={craneSimEvent.event}
+          initialHealth={craneSimEvent.health}
+          weatherState={globalWeather}
+          stowageSlot={craneSimEvent.stowageSlot}
+          onExit={() => {
+            changeShipSpeed(craneSimEvent.event.id, 1);
+            setCraneSimEvent(null);
+          }}
+          onComplete={(result) => {
+            const activeShip = craneSimEvent.event;
+            setCraneSimEvent(null);
+
+            // Advance shipment progress to 0.21 (Outbound Ocean Transit)
+            const targetElapsed = activeShip.duration * 0.21;
+            const newOffset = targetElapsed - (Date.now() - activeShip.startTime);
+            localStorage.setItem(`offset_${activeShip.id}`, newOffset.toString());
+
+            const updatedShip = {
+              ...activeShip,
+              timeOffset: newOffset,
+              cargoHealth: result.finalHealth
+            };
+            setActiveExports((prev) =>
+              prev.map((s) => (s.id === activeShip.id ? updatedShip : s))
+            );
+
+            // Lock shipment pipeline into OCEAN_TRANSIT stage
+            localStorage.setItem(`wharf_stage_${activeShip.id}`, 'OCEAN_TRANSIT');
+
+            addTerminalLog(
+              `> DEPARTURE: Container locked into Bay 04. MV Wharf-Alpha underway to ${activeShip.destination}.`,
+              'highlight'
+            );
+
+            // Launch 3D Ocean Vessel Stage
+            setUseLegacyQuiz(false);
+            setAssessmentConfig({
+              event: updatedShip,
+              type: 'PUSH',
+              health: result.finalHealth
+            });
+          }}
+        />
+      )}
+
       {/* 🧠 3D HELM SIMULATOR (With Non-Destructive Toggle to Legacy Quiz) */}
+      
       {assessmentConfig && (() => {
         const activeShip = assessmentConfig.event;
         return useLegacyQuiz ? (
@@ -937,9 +1056,57 @@ const Simulation = () => {
             totalDurationMs={assessmentConfig.event.duration}
             timeOffset={assessmentConfig.event.timeOffset || 0}
             cargo={assessmentConfig.event.cargo}
-            weightKg={assessmentConfig.event.weightKg || Number(ticketForm.weight) || 2500}
+            category={assessmentConfig.event.category}
+            weightKg={assessmentConfig.event.weightKg}
+            teuCount={assessmentConfig.event.teu_count}
             initialHealth={assessmentConfig.health}
-            onComplete={(result) => processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result)}
+            onComplete={(result) => {
+              if (assessmentConfig.type === 'REROUTE') {
+                processAssessmentResult(assessmentConfig.event, assessmentConfig.type, result);
+                return;
+              }
+
+              const activeShip = assessmentConfig.event;
+              const finalHealthVal = result?.finalHealth ?? assessmentConfig.health ?? 100;
+              setAssessmentConfig(null);
+
+              // Complete voyage: advance progress to 100% and finish delivery directly
+              const targetElapsed = activeShip.duration;
+              const newOffset = targetElapsed - (Date.now() - activeShip.startTime);
+              localStorage.setItem(`offset_${activeShip.id}`, newOffset.toString());
+
+              // Clean up persistent stage keys for this shipment
+              const shipKey = activeShip.id;
+              [
+                `wharf_stage_${shipKey}`,
+                `wharf_stowage_${shipKey}`,
+                `wharf_portflow_step_${shipKey}`,
+                `wharf_portflow_done_${shipKey}`,
+                `wharf_truck_${shipKey}_x`,
+                `wharf_truck_${shipKey}_z`,
+                `wharf_truck_${shipKey}_wp`,
+                `wharf_truck_${shipKey}_laps`,
+                `wharf_truck_${shipKey}_cab_hdg`,
+                `wharf_truck_${shipKey}_trl_hdg`
+              ].forEach((k) => localStorage.removeItem(k));
+
+              const updatedShip = {
+                ...activeShip,
+                timeOffset: newOffset,
+                cargoHealth: finalHealthVal
+              };
+              setActiveExports((prev) =>
+                prev.map((s) => (s.id === activeShip.id ? updatedShip : s))
+              );
+
+              addTerminalLog(
+                `> ARRIVAL: MV Wharf-Alpha berthed at ${activeShip.destination}. Cargo discharged successfully.`,
+                'highlight'
+              );
+
+              // Directly record delivery in database and update reputation
+              handleShipArrival(updatedShip);
+            }}
             onSwitchToQuiz={() => setUseLegacyQuiz(true)}
             onExit={() => {
               changeShipSpeed(assessmentConfig.event.id, 1);
@@ -948,6 +1115,19 @@ const Simulation = () => {
           />
         );
       })()}
+
+      {/* 📊 PHASE D DEBRIEF TEMPORARILY DISABLED (Pending team consensus)
+      {debriefEvent && (
+        <VoyageDebriefModal
+          shipment={debriefEvent.event}
+          initialHealth={debriefEvent.initialHealth || 100}
+          finalHealth={debriefEvent.health || 100}
+          weatherState={globalWeather}
+          onClose={() => setDebriefEvent(null)}
+          onDischargeComplete={() => setDebriefEvent(null)}
+        />
+      )}
+      */}
   
       {/* Mayday Modal Decommissioned — Handled via Autonomous Weather & Telematics */}
 
@@ -961,7 +1141,7 @@ const Simulation = () => {
             <div className="chaos-actions">
               <button className="btn-push info-btn" onClick={() => executeRelaunch('REROUTE')} style={{ flex: 1 }}>
                 REROUTE 
-                <span className="btn-subtext">Safe Path (Cost: ${(DESTINATION_PRICING[relaunchEvent.destination] * 0.7).toLocaleString()})<br/>Delay: +1 Day</span>
+                <span className="btn-subtext">Safe Channel Bypass<br/>Navigation Delay: +1 Day</span>
               </button>
               
               <button className="btn-push neutral-btn" onClick={() => executeRelaunch('WAIT')} style={{ flex: 1 }}>

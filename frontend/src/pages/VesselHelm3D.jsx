@@ -3,10 +3,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 const CAMERA_MODES = [
-  { id: 1, key: '1', label: 'DRONE CHASE' },
-  { id: 2, key: '2', label: 'BRIDGE POV' },
-  { id: 3, key: '3', label: 'SEA LEVEL / FLYBY' },
-  { id: 4, key: '4', label: 'FREE ORBIT' }
+  { id: 1, key: '1', label: 'CHASE' },
+  { id: 2, key: '2', label: 'BRIDGE' },
+  { id: 3, key: '3', label: 'FLYBY' },
+  { id: 4, key: '4', label: 'ORBIT' }
 ];
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -48,7 +48,9 @@ const VesselHelm3D = ({
   totalDurationMs = 3600000,
   timeOffset = 0,
   cargo = 'Cavendish Bananas',
+  category = 'Perishable (Food)',
   weightKg = 2500,
+  teuCount: propTeuCount,
   initialHealth = 100,
   onComplete,
   onExit
@@ -97,7 +99,24 @@ const VesselHelm3D = ({
   const [simSpeed, setSimSpeed] = useState(1); // 1x or 2x
   const simSpeedRef = useRef(1);
 
-  const teuCount = Math.max(1, Math.ceil((Number(weightKg) || 2500) / 25000));
+  const resolvedWeightKg = Number(weightKg) || 2500;
+  const teuCount = Math.max(
+    1,
+    Number(propTeuCount) || Math.ceil(resolvedWeightKg / 25000)
+  );
+  const catLower = String(category || '').toLowerCase();
+  const isElectronics = catLower.includes('electronic');
+  const isRawMaterials = catLower.includes('raw');
+  const isPerishable =
+    !isElectronics &&
+    !isRawMaterials &&
+    (catLower.includes('perishable') ||
+      cargo.toLowerCase().includes('banana') ||
+      cargo.toLowerCase().includes('food'));
+
+  const payloadPerTeu = Math.round(resolvedWeightKg / teuCount);
+  const tareWeightPerTeu = isPerishable ? 3080 : 2250;
+  const verifiedGrossMass = payloadPerTeu + tareWeightPerTeu;
 
   const switchCameraMode = (modeId) => {
     cameraModeRef.current = modeId;
@@ -130,8 +149,8 @@ const VesselHelm3D = ({
     health: Math.round(initialHealth),
     etaFormatted: formatETATimestamp(initialEtaMs),
     remainingFormatted: formatRemainingDuration(initialRemainingMs),
-    autopilotBanner: `OPEN-SEA AUTOPILOT LOCKED • COURSE 036° TRUE TOWARD ${String(
-      destination
+    autopilotBanner: `AUTOPILOT LOCKED • COURSE 036° TRUE TOWARD ${(
+      destination || 'SINGAPORE'
     ).toUpperCase()}`
   });
 
@@ -144,6 +163,8 @@ const VesselHelm3D = ({
     pitchOffset: 4.0,
     zoomDist: 42
   });
+
+  const hasCompletedRef = useRef(false);
 
   const simRef = useRef({
     speedKmh: 28.15, // ~15.2 Knots (28.15 km/h) commercial feeder cruise speed
@@ -232,179 +253,167 @@ const VesselHelm3D = ({
     scene.add(rainSystem);
 
     // ==========================================
-    // 3. AUTHENTIC 3D FEEDER CONTAINER VESSEL MODEL
+    // 3. HARMONIZED 3D FEEDER CONTAINER VESSEL (MV WHARF-ALPHA FROM PORTTERMINAL3D)
     // ==========================================
     const playerGroup = new THREE.Group();
     const hullTiltGroup = new THREE.Group();
     playerGroup.add(hullTiltGroup);
     scene.add(playerGroup);
 
-    const antiFoulingRedMat = new THREE.MeshLambertMaterial({ color: 0x991b1b });
-    const darkNavyHullMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
-    const deckGreyMat = new THREE.MeshLambertMaterial({ color: 0x334155 });
-    const guideSteelMat = new THREE.MeshLambertMaterial({ color: 0x475569 });
-    const superWhiteMat = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
-    const bridgeGlassMat = new THREE.MeshLambertMaterial({ color: 0x0284c7 });
-    const funnelAmberMat = new THREE.MeshLambertMaterial({ color: 0xd97706 });
-    const darkSteelMat = new THREE.MeshLambertMaterial({ color: 0x1e293b });
+    // Rotate the PortTerminal3D ship assembly (-90 deg around Y) so Bow (-X) points Forward (-Z)
+    // and scale by 0.34 so the 122-unit feeder vessel matches the open-ocean camera & wake system
+    const shipModelGroup = new THREE.Group();
+    shipModelGroup.rotation.y = -Math.PI / 2;
+    shipModelGroup.scale.setScalar(0.34);
+    shipModelGroup.position.y = -0.55;
+    hullTiltGroup.add(shipModelGroup);
 
-    // A. Lower Red Antifouling Hull & Bulbous Bow
-    const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(6.2, 1.8, 30), antiFoulingRedMat);
-    lowerHull.position.set(0, 0.3, 0);
-    hullTiltGroup.add(lowerHull);
+    const navyHullMat = new THREE.MeshLambertMaterial({ color: 0x0f172a });
+    const redBootMat = new THREE.MeshLambertMaterial({ color: 0x991b1b });
+    const deckGreyMat = new THREE.MeshLambertMaterial({ color: 0x475569 });
+    const whiteSuperMat = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
+    const bridgeGlassMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const funnelAmberMat = new THREE.MeshLambertMaterial({ color: 0xeab308 });
 
-    const bulbousBow = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.1, 1.5, 5.5, 10),
-      antiFoulingRedMat
+    // 1. Lower Antifouling Hull Block in Deep Marine Red (BoxGeometry 118 x 3.2 x 22)
+    const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(118, 3.2, 22), redBootMat);
+    lowerHull.position.set(0, 1.4, 0);
+    shipModelGroup.add(lowerHull);
+
+    // 2. Upper Hull Block in Dark Navy Slate (BoxGeometry 122 x 5.2 x 24)
+    const upperHull = new THREE.Mesh(new THREE.BoxGeometry(122, 5.2, 24), navyHullMat);
+    upperHull.position.set(0, 5.4, 0);
+    shipModelGroup.add(upperHull);
+
+    // 3. Raised Forecastle Bow Block at Forward End (-X)
+    const bowBlock = new THREE.Mesh(new THREE.BoxGeometry(18, 3.2, 23.5), navyHullMat);
+    bowBlock.position.set(-55, 9.2, 0);
+    shipModelGroup.add(bowBlock);
+
+    // 4. Main Cargo Deck Plate with Cell Guide Coamings
+    const cargoDeck = new THREE.Mesh(new THREE.BoxGeometry(92, 0.6, 21.5), deckGreyMat);
+    cargoDeck.position.set(-2, 8.2, 0);
+    shipModelGroup.add(cargoDeck);
+
+    // 5. Aft Bridge Superstructure Tower in Clean Maritime White with Panoramic Bridge Wing Windows
+    const bridgeTower = new THREE.Mesh(new THREE.BoxGeometry(16, 15, 20), whiteSuperMat);
+    bridgeTower.position.set(46, 15.5, 0);
+    shipModelGroup.add(bridgeTower);
+
+    const bridgeHelm = new THREE.Mesh(new THREE.BoxGeometry(17.5, 3.2, 22), whiteSuperMat);
+    bridgeHelm.position.set(45.5, 23.5, 0);
+    shipModelGroup.add(bridgeHelm);
+
+    const bridgeWindows = new THREE.Mesh(new THREE.BoxGeometry(17.7, 1.3, 21.2), bridgeGlassMat);
+    bridgeWindows.position.set(45.3, 23.6, 0);
+    shipModelGroup.add(bridgeWindows);
+
+    // Radar Scanner Bar atop Bridge Roof
+    const radarScannerBar = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.6, 6.5),
+      funnelAmberMat
     );
-    bulbousBow.rotation.x = Math.PI / 2;
-    bulbousBow.position.set(0, 0.1, -16.5);
-    hullTiltGroup.add(bulbousBow);
+    radarScannerBar.position.set(45.5, 25.8, 0);
+    shipModelGroup.add(radarScannerBar);
 
-    // B. Dark Navy Topsides Freeboard & White Waterline Stripe
-    const upperHull = new THREE.Mesh(new THREE.BoxGeometry(6.6, 2.0, 29), darkNavyHullMat);
-    upperHull.position.set(0, 1.9, 0.5);
-    hullTiltGroup.add(upperHull);
-
-    const waterlineStripe = new THREE.Mesh(new THREE.BoxGeometry(6.68, 0.22, 29.2), superWhiteMat);
-    waterlineStripe.position.set(0, 1.1, 0.4);
-    hullTiltGroup.add(waterlineStripe);
-
-    // C. Raised Forecastle Bow Deck, Anchor Windlass & Forward Navigation Mast
-    const bowWedgeGeo = new THREE.ConeGeometry(4.7, 9.5, 4);
-    bowWedgeGeo.rotateX(-Math.PI / 2);
-    bowWedgeGeo.rotateZ(Math.PI / 4);
-    const bowWedge = new THREE.Mesh(bowWedgeGeo, darkNavyHullMat);
-    bowWedge.scale.set(1.0, 0.72, 1.0);
-    bowWedge.position.set(0, 2.3, -17.5);
-    hullTiltGroup.add(bowWedge);
-
-    const forecastleDeck = new THREE.Mesh(new THREE.BoxGeometry(6.2, 1.1, 7.5), darkNavyHullMat);
-    forecastleDeck.position.set(0, 3.1, -13.2);
-    hullTiltGroup.add(forecastleDeck);
-
-    const forecastleFloor = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.2, 7.2), deckGreyMat);
-    forecastleFloor.position.set(0, 3.7, -13.2);
-    hullTiltGroup.add(forecastleFloor);
-
-    [-1.4, 1.4].forEach((ax) => {
-      const windlass = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.9, 8), darkSteelMat);
-      windlass.rotation.z = Math.PI / 2;
-      windlass.position.set(ax, 4.1, -15.2);
-      hullTiltGroup.add(windlass);
+    // 6. Twin Diesel Exhaust Funnels Emitting Subtle Animated Dark Smoke Particles
+    const exhaustPlumes = [];
+    const exhaustMat = new THREE.MeshBasicMaterial({
+      color: 0x64748b,
+      transparent: true,
+      opacity: 0.38
     });
 
-    const foreMast = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.24, 6.2, 8), superWhiteMat);
-    foreMast.position.set(0, 6.6, -15.5);
-    hullTiltGroup.add(foreMast);
+    [-4.5, 4.5].forEach((fz) => {
+      const funnel = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.4, 1.7, 5.5, 10),
+        funnelAmberMat
+      );
+      funnel.position.set(50, 26.5, fz);
+      shipModelGroup.add(funnel);
 
-    const foreCrossYard = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.14, 0.14), superWhiteMat);
-    foreCrossYard.position.set(0, 8.6, -15.5);
-    hullTiltGroup.add(foreCrossYard);
-
-    const navLight = new THREE.Mesh(
-      new THREE.SphereGeometry(0.28, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
-    );
-    navLight.position.set(0, 9.8, -15.5);
-    hullTiltGroup.add(navLight);
-
-    // D. Recessed Main Cargo Bay Amidships & Multi-Tier ISO Container Stacks
-    const wellFloor = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.3, 16.5), deckGreyMat);
-    wellFloor.position.set(0, 2.85, -1.2);
-    hullTiltGroup.add(wellFloor);
-
-    [-3.15, 3.15].forEach((wx) => {
-      const coaming = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.1, 16.5), darkNavyHullMat);
-      coaming.position.set(wx, 3.3, -1.2);
-      hullTiltGroup.add(coaming);
+      for (let pIdx = 0; pIdx < 3; pIdx++) {
+        const plume = new THREE.Mesh(
+          new THREE.CylinderGeometry(1.1 + pIdx * 0.65, 0.8 + pIdx * 0.4, 2.6, 8),
+          exhaustMat
+        );
+        plume.position.set(50 + pIdx * 1.5, 30.2 + pIdx * 2.4, fz);
+        shipModelGroup.add(plume);
+        exhaustPlumes.push({
+          mesh: plume,
+          baseY: 30.2 + pIdx * 2.4,
+          baseX: 50 + pIdx * 1.5,
+          phase: pIdx * 1.3
+        });
+      }
     });
 
-    [-8.6, -1.2, 6.2].forEach((gz) => {
-      [-2.85, 0, 2.85].forEach((gx) => {
-        const guidePost = new THREE.Mesh(new THREE.BoxGeometry(0.22, 4.8, 0.25), guideSteelMat);
-        guidePost.position.set(gx, 5.2, gz);
-        hullTiltGroup.add(guidePost);
+    // 7. Full Multi-Bay Container Cargo Grid Across Bays 01, 02, 03, 05, and 06
+    const isoColors = [
+      0x0284c7, // Cyan
+      0xd97706, // Amber
+      0x059669, // Emerald
+      0x991b1b, // Dark Red
+      0x7c3aed  // Purple
+    ];
+    const bayPositions = [-36, -24, -12, 12, 24]; // Bays 01, 02, 03, 05, 06 (Bay 04 at X = 0 reserved)
+    bayPositions.forEach((bx, bIdx) => {
+      [-6.5, 0, 6.5].forEach((rz, rIdx) => {
+        for (let tier = 0; tier < 2; tier++) {
+          const cMat = new THREE.MeshLambertMaterial({
+            color: isoColors[(bIdx + rIdx + tier) % isoColors.length]
+          });
+          const cMesh = new THREE.Mesh(new THREE.BoxGeometry(11.2, 3.2, 3.2), cMat);
+          cMesh.position.set(bx, 10.1 + tier * 3.25, rz);
+          shipModelGroup.add(cMesh);
+        }
       });
     });
 
-    const teuColors = [
-      0xd97706, // Amber
-      0x0284c7, // Marine Cyan
-      0x16a34a, // Emerald
-      0xdc2626, // Crimson
-      0x2563eb, // Ocean Blue
-      0x9333ea  // Violet
-    ];
-    const bayZPositions = [-5.0, 2.4];
-    const bayXPositions = [-1.45, 1.45];
-    const tiers = Math.max(2, Math.min(3, Math.ceil(Number(weightKg || 2500) / 1400)));
-
-    let colorIdx = 0;
-    for (let tier = 0; tier < tiers; tier++) {
-      for (let bz = 0; bz < bayZPositions.length; bz++) {
-        for (let bx = 0; bx < bayXPositions.length; bx++) {
-          const cMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(2.55, 1.45, 6.6),
-            new THREE.MeshLambertMaterial({ color: teuColors[colorIdx % teuColors.length] })
-          );
-          cMesh.position.set(bayXPositions[bx], 3.75 + tier * 1.5, bayZPositions[bz]);
-          hullTiltGroup.add(cMesh);
-          colorIdx++;
-        }
+    // Side rows in Bay 04 (X = 0, Z = -6.5 and +6.5) + Base Tier under active slot (X = 0, Z = 0)
+    [-6.5, 6.5].forEach((rz, rIdx) => {
+      for (let tier = 0; tier < 2; tier++) {
+        const sideMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(11.2, 3.2, 3.2),
+          new THREE.MeshLambertMaterial({ color: isoColors[(rIdx + tier) % isoColors.length] })
+        );
+        sideMesh.position.set(0, 10.1 + tier * 3.25, rz);
+        shipModelGroup.add(sideMesh);
       }
-    }
-
-    // E. Aft Superstructure, Tinted Bridge Window Band, Radar Scanner Mast & Twin Exhaust Funnels
-    const poopDeck = new THREE.Mesh(new THREE.BoxGeometry(6.4, 1.4, 8.2), darkNavyHullMat);
-    poopDeck.position.set(0, 3.2, 10.9);
-    hullTiltGroup.add(poopDeck);
-
-    const accommodationBlock = new THREE.Mesh(new THREE.BoxGeometry(5.2, 4.6, 5.2), superWhiteMat);
-    accommodationBlock.position.set(0, 6.0, 10.6);
-    hullTiltGroup.add(accommodationBlock);
-
-    const wheelhouse = new THREE.Mesh(new THREE.BoxGeometry(5.8, 1.6, 3.6), superWhiteMat);
-    wheelhouse.position.set(0, 8.9, 9.9);
-    hullTiltGroup.add(wheelhouse);
-
-    const bridgeVisor = new THREE.Mesh(new THREE.BoxGeometry(5.88, 0.75, 3.68), bridgeGlassMat);
-    bridgeVisor.position.set(0, 9.05, 9.85);
-    hullTiltGroup.add(bridgeVisor);
-
-    const compassDeckRoof = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.3, 4.0), superWhiteMat);
-    compassDeckRoof.position.set(0, 9.8, 9.9);
-    hullTiltGroup.add(compassDeckRoof);
-
-    const radarPedestal = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.25, 0.35, 1.2, 8),
-      superWhiteMat
-    );
-    radarPedestal.position.set(0, 10.5, 9.5);
-    hullTiltGroup.add(radarPedestal);
-
-    const radarScannerBar = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 0.22, 0.35),
-      funnelAmberMat
-    );
-    radarScannerBar.position.set(0, 11.2, 9.5);
-    hullTiltGroup.add(radarScannerBar);
-
-    [-1.4, 1.4].forEach((fx) => {
-      const funnelBase = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.65, 0.78, 3.4, 10),
-        funnelAmberMat
-      );
-      funnelBase.position.set(fx, 9.4, 12.3);
-      hullTiltGroup.add(funnelBase);
-
-      const funnelCasing = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.68, 0.68, 0.7, 10),
-        darkSteelMat
-      );
-      funnelCasing.position.set(fx, 11.1, 12.3);
-      hullTiltGroup.add(funnelCasing);
     });
+
+    const bay04Base = new THREE.Mesh(
+      new THREE.BoxGeometry(11.2, 3.2, 3.2),
+      new THREE.MeshLambertMaterial({ color: 0x0284c7 })
+    );
+    bay04Base.position.set(0, 10.1, 0);
+    shipModelGroup.add(bay04Base);
+
+    // 8. Active User Consignment Locked in Bay 04 • Row 02 • Tier 82 (Reflects Selected Goods Category)
+    const activeContainerColor = isPerishable
+      ? 0xf8fafc
+      : isElectronics
+      ? 0x1e3a8a
+      : 0x059669;
+    const activeStripeColor = isPerishable
+      ? 0x38bdf8
+      : isElectronics
+      ? 0x60a5fa
+      : 0xfacc15;
+
+    const userBay04Container = new THREE.Mesh(
+      new THREE.BoxGeometry(11.4, 3.25, 3.25),
+      new THREE.MeshLambertMaterial({ color: activeContainerColor })
+    );
+    userBay04Container.position.set(0, 13.35, 0);
+    shipModelGroup.add(userBay04Container);
+
+    const userBay04Stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(11.46, 0.48, 3.3),
+      new THREE.MeshBasicMaterial({ color: activeStripeColor })
+    );
+    userBay04Stripe.position.set(0, 14.2, 0);
+    shipModelGroup.add(userBay04Stripe);
 
     // F. Bow Foam Spray Particles (Parented to Bow for Breaking Wave Splash)
     const sprayCount = 160;
@@ -611,8 +620,15 @@ const VesselHelm3D = ({
         s.extraSimOffsetMs += rawDt * (simSpeedRef.current - 1) * 1000;
       }
 
-      // Spin Bridge X-Band Radar Scanner
+      // Spin Bridge X-Band Radar Scanner & Animate Twin Funnel Exhaust Smoke Plumes
       radarScannerBar.rotation.y = simElapsed * 4.2;
+      exhaustPlumes.forEach((ep) => {
+        const cycle = ((simElapsed * 2.0 + ep.phase) % 3.0) / 3.0;
+        ep.mesh.position.y = ep.baseY + cycle * 6.0;
+        ep.mesh.position.x = ep.baseX + cycle * 4.5;
+        const sScale = 1.0 + cycle * 0.85;
+        ep.mesh.scale.set(sScale, 1.0 + cycle * 0.45, sScale);
+      });
 
       // Live Weather Atmosphere, Swell Amplitude & Water Color Lerp
       const currentW = weatherRef.current;
@@ -850,8 +866,8 @@ const VesselHelm3D = ({
         const absHeel = Math.abs(s.rollAngleDeg).toFixed(1);
         const swellHeight = (waveAmp * 1.5).toFixed(1);
 
-        let banner = `OPEN-SEA AUTOPILOT LOCKED • COURSE 036° TRUE TOWARD ${String(
-          destination
+        let banner = `AUTOPILOT LOCKED • COURSE 036° TRUE TOWARD ${(
+          destination || 'SINGAPORE'
         ).toUpperCase()}`;
         if (isCyclone) {
           banner = `HEAVY WEATHER AUTOPILOT • ACTIVE ANTI-HEEL STABILIZATION ENGAGED`;
@@ -859,12 +875,18 @@ const VesselHelm3D = ({
           banner = `MODERATE SEA SWELL • AUTOPILOT MAINTAINING 15.0 KTS CRUISE`;
         }
 
+        const displayTemp = isPerishable
+          ? (-4.1 + Math.sin(simElapsed * 0.45) * 0.1).toFixed(1)
+          : isElectronics
+          ? '+22.0'
+          : '+24.5';
+
         setHud({
           speedKmh: Math.round(s.speedKmh),
           speedKnots: knots,
           rpm: Math.round(85 + Math.sin(simElapsed * OMEGA_MID) * 1.2),
           fuelRateMt: (14.4 + (s.speedKmh / 28.15) * 0.15).toFixed(1),
-          reeferTemp: (-4.1 + Math.sin(simElapsed * 0.45) * 0.1).toFixed(1),
+          reeferTemp: displayTemp,
           rudder: 0,
           headingDeg: s.compassHeadingDeg,
           rollDeg: absHeel,
@@ -874,6 +896,16 @@ const VesselHelm3D = ({
           remainingFormatted: formatRemainingDuration(remainingMs),
           autopilotBanner: banner
         });
+
+        // Automatically trigger Port of Discharge Arrival Debrief if countdown reaches zero
+        if (remainingMs <= 0 && !hasCompletedRef.current && onComplete) {
+          hasCompletedRef.current = true;
+          onComplete({
+            success: true,
+            finalHealth: Math.round(initialHealth),
+            stage: 'POD_ARRIVED'
+          });
+        }
       }
 
       renderer.render(scene, camera);
@@ -949,7 +981,7 @@ const VesselHelm3D = ({
               color: '#38bdf8'
             }}
           >
-            OCEAN TRANSIT: OPEN-SEA AUTOPILOT • DESTINATION: {String(destination).toUpperCase()}
+            OCEAN TRANSIT: OPEN-SEA AUTOPILOT • DESTINATION: {(destination || 'SINGAPORE').toUpperCase()}
           </span>
         </div>
         <div
@@ -1038,7 +1070,7 @@ const VesselHelm3D = ({
             fontFamily: "'Space Mono', monospace"
           }}
         >
-          {Number(weightKg).toLocaleString()} KG • {teuCount} TEU •{' '}
+          NET {resolvedWeightKg.toLocaleString()} KG ({teuCount} TEU • VGM {(verifiedGrossMass * teuCount).toLocaleString()} KG) •{' '}
           <strong
             style={{
               color:
@@ -1094,15 +1126,21 @@ const VesselHelm3D = ({
             }}
           >
             <div>
-              <div style={{ fontSize: 9, color: '#64748b' }}>INTERNAL REEFER TEMP</div>
+              <div style={{ fontSize: 9, color: '#64748b' }}>
+                {isPerishable ? 'INTERNAL REEFER TEMP' : 'CONTAINER CLIMATE'}
+              </div>
               <div style={{ fontSize: 16, fontWeight: 'bold', color: '#38bdf8' }}>
                 {hud.reeferTemp}°C
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 9, color: '#64748b' }}>POWER SUPPLY</div>
+              <div style={{ fontSize: 9, color: '#64748b' }}>BAY 04 STOWAGE</div>
               <div style={{ fontSize: 11, fontWeight: 'bold', color: '#e2e8f0' }}>
-                SHIPBOARD AUX GRID
+                {isPerishable
+                  ? 'SHIPBOARD AUX GRID'
+                  : isElectronics
+                  ? 'SEALED DRY VAULT'
+                  : 'STABILITY TRIM LOCK'}
               </div>
             </div>
           </div>
@@ -1225,13 +1263,17 @@ const VesselHelm3D = ({
         {/* Complete Voyage -> Port Arrival Button */}
         <button
           type="button"
-          onClick={() =>
-            onComplete &&
-            onComplete({
-              success: true,
-              finalHealth: 100
-            })
-          }
+          onClick={() => {
+            if (hasCompletedRef.current) return;
+            hasCompletedRef.current = true;
+            if (onComplete) {
+              onComplete({
+                success: true,
+                finalHealth: Math.round(initialHealth),
+                stage: 'POD_ARRIVED'
+              });
+            }
+          }}
           style={{
             width: '100%',
             background: '#38bdf8',
@@ -1314,12 +1356,14 @@ const VesselHelm3D = ({
           </button>
         </div>
 
-        {/* Multi-Camera Director Pill Bar ([1] - [4]) */}
+        {/* 2x2 Matrix Camera Director Grid ([1] - [4]) */}
         <div
           style={{
-            display: 'flex',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
             gap: 6,
-            background: 'rgba(10, 14, 23, 0.88)',
+            width: 220,
+            background: 'rgba(11, 17, 32, 0.9)',
             backdropFilter: 'blur(14px)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: 12,
@@ -1334,14 +1378,17 @@ const VesselHelm3D = ({
                 type="button"
                 onClick={() => switchCameraMode(cam.id)}
                 style={{
-                  background: active ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
-                  border: `1px solid ${active ? '#38bdf8' : 'transparent'}`,
+                  background: active ? 'rgba(56, 189, 248, 0.18)' : 'rgba(255, 255, 255, 0.02)',
+                  border: `1px solid ${active ? '#38bdf8' : 'rgba(255, 255, 255, 0.06)'}`,
+                  boxShadow: active ? '0 0 12px rgba(56, 189, 248, 0.28)' : 'none',
                   color: active ? '#38bdf8' : '#94a3b8',
                   borderRadius: 8,
-                  padding: '6px 10px',
+                  padding: '7px 8px',
                   fontFamily: "'Space Mono', monospace",
                   fontSize: 10,
-                  fontWeight: 'bold',
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
