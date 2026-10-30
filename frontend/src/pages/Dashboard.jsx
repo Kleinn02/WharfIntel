@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Ship, MapPin, AlertTriangle } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './Dashboard.css'; 
@@ -152,7 +153,10 @@ const Dashboard = () => {
   const isInstructorRoute = location.pathname === '/lms/instructor';
   
   // --- MAP CONSTRAINTS ---
-  const SEA_BOUNDS = [[-15.0, 90.0], [30.0, 150.0]];
+  const SEA_BOUNDS = [
+    [-15.0, 90.0], 
+    [21.5, 150.0]  
+  ];
   const SEA_CENTER = [5.0, 120.0];
   
   // 🔥 THE FIX: Uncommented this line! The popup math needs this to calculate Distance to Port!
@@ -415,7 +419,9 @@ const CustomTooltip = ({ active, payload, label }) => {
                 <Popup className={`mt-style-popup ${isLightMode ? 'light-popup' : 'dark-popup'}`}>
                   <div className="mt-header">
                     <div className="mt-title">
-                      <span className="mt-icon">🚢</span>
+                      <span className="mt-icon" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent-color)' }}>
+                        <Ship size={20} />
+                      </span>
                       <div><strong>{vessel.name}</strong><span className="mt-type">{vessel.type}</span></div>
                     </div>
                     <span className={`badge ${vessel.status.toLowerCase()}`}>{vessel.status}</span>
@@ -427,7 +433,9 @@ const CustomTooltip = ({ active, payload, label }) => {
                     <div className="mt-data-item"><label>LONGITUDE</label><span>{vessel.lng.toFixed(4)}</span></div>
                   </div>
                   <div className="mt-actions">
-                    <button className="mt-btn primary" onClick={() => setFocusedVessel(vessel)}>📍 Track</button>
+                    <button className="mt-btn primary" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={() => setFocusedVessel(vessel)}>
+                      <MapPin size={13} /> Track
+                    </button>
                     <button className="mt-btn secondary" onClick={() => setLogModalVessel(vessel)}>View Log</button>
                   </div>
                 </Popup>
@@ -446,7 +454,9 @@ const CustomTooltip = ({ active, payload, label }) => {
               <Popup className={`mt-style-popup ${isLightMode ? 'light-popup' : 'dark-popup'}`}>
                 <div style={{ padding: '15px', textAlign: 'center' }}>
                   <strong style={{ color: '#ef4444', display: 'block', marginBottom: '8px', fontSize: '14px', letterSpacing: '1px' }}>
-                    ⚠️ HIGH CONGESTION ZONE
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <AlertTriangle size={15} /> HIGH CONGESTION ZONE
+                    </span>
                   </strong>
                   <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
                     DBSCAN algorithm detected <strong style={{color: 'var(--text-primary)'}}>{zone.vessel_count} vessels</strong> bottlenecked in this sector.

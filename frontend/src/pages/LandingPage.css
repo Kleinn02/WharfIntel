@@ -10,6 +10,10 @@
   --border-muted: rgba(255, 255, 255, 0.1);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 .landing-wrapper.dark-theme {
   background: var(--bg-dark);
   color: var(--text-main);
@@ -34,30 +38,53 @@
   z-index: 1000;
 }
 
-/* Update your existing .logo class in LandingPage.css */
 .logo {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.5px;
-  display: flex;       /* Added to align the icon and text */
-  align-items: center; /* Centers them vertically */
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-left: 50px;
 }
 
-.logo span { color: var(--primary-accent); }
+.logo span {
+  position: relative;
+   color: var(--primary-accent);
+   right: 10px; 
+  }
+
+/* Centered Middle Navigation Anchor Links */
+.nav-anchor-links {
+  display: flex;
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  gap: 2.5rem;
+}
+
+.nav-anchor-item {
+  color: #9CA3AF;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.nav-anchor-item:hover {
+  color: var(--primary-accent);
+}
 
 .nav-links { display: flex; gap: 2rem; align-items: center; }
 
 .nav-btn-text {
-  /* position: relative;
-  right: 150px; */
   background: none; border: none;
   color: var(--text-main); font-weight: 500; cursor: pointer;
 }
 .nav-btn-text:hover { color: var(--primary-accent); }
 
 .nav-btn-pill {
-  /* margin-right: 100px; */
   background: var(--primary-accent); color: #0b0f19;
   border: none; padding: 10px 24px; border-radius: 50px;
   font-weight: 600; cursor: pointer; transition: 0.2s;
@@ -76,87 +103,512 @@
 }
 
 .hero p {
-  color: var(--text-muted); font-size: 1.125rem; line-height: 1.6; max-width: 480px;
+  color: var(--text-muted); font-size: 1.125rem; line-height: 1.6; max-width: 520px;
 }
 
-.hero-input-group { display: flex; gap: 10px; margin-top: 2.5rem; }
-.hero-input {
-  padding: 14px 20px; border-radius: 8px; border: 1px solid var(--border-muted);
-  background: rgba(255,255,255,0.05); color: #fff; width: 280px; font-size: 1rem;
+.hero-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2.5rem;
 }
-.hero-input:focus { outline: none; border-color: var(--primary-accent); }
 
 .btn-main {
-  background: var(--primary-accent); color: #0b0f19; border: none;
-  padding: 0 24px; border-radius: 8px; font-weight: 600; cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  min-width: 160px;
+  background: var(--primary-accent);
+  color: #0b0f19;
+  border: none;
+  padding: 0 28px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
 }
 
-/* Floating Glass Cards */
-.mockup-container { position: relative; height: 500px; }
-.mockup-card {
-  background: var(--card-bg); padding: 1.5rem; border-radius: 16px;
-  backdrop-filter: blur(10px); position: absolute;
-  border: 2px solid var(--border-glow); /* The glowing border */
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+.btn-main:hover {
+  background: #9db5ff;
+  transform: translateY(-1px);
 }
-.primary-card { width: 260px; top: 10%; right: 20%; z-index: 3; }
-.chart-card { width: 340px; top: 30%; right: 0%; z-index: 2; height: 200px; display: flex; align-items: flex-end;}
-.secondary-card { width: 140px; bottom: 15%; right: 5%; z-index: 4; text-align: center; }
 
-.card-header h2 { font-size: 2.5rem; color: var(--primary-accent); margin-bottom: 0.2rem;}
-.card-label { font-size: 0.85rem; color: var(--text-main); }
-.success-text { color: #4ade80; font-weight: 700; font-size: 1.5rem; }
+/* --- STRATEGIC 2D GIS CORRIDOR TERMINAL --- */
+.hero-visual {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
 
-/* The glowing SVG chart line */
-.neon-chart { width: 100%; height: 100px; filter: drop-shadow(0 0 8px rgba(130, 160, 255, 0.6)); }
+.gis-terminal-card {
+  width: 100%;
+  max-width: 600px;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glow);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 24px rgba(130, 160, 255, 0.12);
+  overflow: hidden;
+}
+
+.gis-terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.15rem;
+  background: rgba(11, 15, 25, 0.75);
+  border-bottom: 1px solid var(--border-muted);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.gis-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.gis-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-muted);
+  color: var(--text-muted);
+}
+
+.gis-status-chip.active-chip {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #34d399;
+}
+
+.live-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px #34d399;
+  animation: statusPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+.gis-header-coords {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--primary-accent);
+  letter-spacing: 0.05em;
+}
+
+/* Inner GIS Map Viewport with Tactical Grid Pattern */
+.gis-map-viewport {
+  position: relative;
+  width: 100%;
+  height: 380px;
+  background-color: rgba(8, 12, 21, 0.85);
+  background-image: 
+    linear-gradient(to right, rgba(130, 160, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(130, 160, 255, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+  overflow: hidden;
+}
+
+.gis-corridor-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.gis-graticules line {
+  stroke: rgba(255, 255, 255, 0.04);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.gis-landmasses path {
+  fill: rgba(30, 41, 59, 0.55);
+  stroke: rgba(130, 160, 255, 0.22);
+  stroke-width: 1.2;
+}
+
+.gis-mesh-edges line {
+  stroke: rgba(130, 160, 255, 0.14);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+/* Beaufort Weather Hazard Polygon */
+.hazard-polygon {
+  fill: rgba(245, 158, 11, 0.12);
+  stroke: rgba(248, 113, 113, 0.75);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.hazard-label-title {
+  fill: #f87171;
+  font-size: 8.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  letter-spacing: 0.06em;
+}
+
+.hazard-label-sub {
+  fill: rgba(252, 165, 165, 0.8);
+  font-size: 7px;
+  font-weight: 500;
+  text-anchor: middle;
+  letter-spacing: 0.04em;
+}
+
+/* A* Trajectory Path with SVG Glow Filter */
+.astar-route-base {
+  fill: none;
+  stroke: rgba(130, 160, 255, 0.22);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.astar-route-active {
+  fill: none;
+  stroke: var(--primary-accent);
+  stroke-width: 2.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(130, 160, 255, 0.7));
+}
+
+.sea-corridor-label {
+  fill: rgba(156, 163, 175, 0.45);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+/* Waypoint Nodes & Radar Pulse */
+.waypoint-outer-ring {
+  fill: rgba(11, 15, 25, 0.9);
+  stroke: var(--primary-accent);
+  stroke-width: 1.75;
+}
+
+.waypoint-core {
+  fill: var(--primary-accent);
+}
+
+.active-node-ring {
+  stroke: #34d399;
+}
+
+.active-node-core {
+  fill: #34d399;
+  filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.8));
+}
+
+.radar-beacon-pulse {
+  fill: rgba(52, 211, 153, 0.25);
+  stroke: #34d399;
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.waypoint-label {
+  fill: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.active-waypoint-label {
+  fill: #FFFFFF;
+  font-weight: 700;
+}
+
+/* Floating Telemetry Badges */
+.telemetry-badge {
+  position: absolute;
+  z-index: 5;
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-glow);
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.badge-top-left {
+  top: 14px;
+  left: 14px;
+}
+
+.badge-bottom-right {
+  bottom: 14px;
+  right: 14px;
+}
+
+.telemetry-badge-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: 0.03em;
+}
+
+.telemetry-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.telemetry-badge-row strong {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.telemetry-badge-row strong.text-emerald {
+  color: #34d399;
+}
+
+.telemetry-badge-row strong.text-accent {
+  color: var(--primary-accent);
+}
+
+.telemetry-icon-emerald {
+  color: #34d399;
+  flex-shrink: 0;
+}
+
+.telemetry-icon-accent {
+  color: var(--primary-accent);
+  flex-shrink: 0;
+}
 
 /* --- SECTIONS --- */
 .trust-section { text-align: center; padding: 4rem 8%; border-bottom: 1px solid var(--border-muted); }
-.trust-logos { display: flex; justify-content: center; gap: 4rem; color: var(--text-muted); font-size: 1.25rem; font-weight: 600; flex-wrap: wrap;}
+.trust-logos {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 3.5rem;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+.trust-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.trust-icon {
+  color: var(--primary-accent);
+  flex-shrink: 0;
+}
 
-/* Feature Big Visual */
+/* Feature Big Visual (Video Showcase) */
 .feature-showcase { padding: 8% 8%; text-align: center; }
-.showcase-header { max-width: 600px; margin: 0 auto 4rem; }
+.showcase-header { max-width: 680px; margin: 0 auto 4rem; }
 .showcase-header h2 { font-size: 2.5rem; margin-bottom: 1rem; letter-spacing: -1px; }
-.showcase-header p { color: var(--text-muted); font-size: 1.1rem; }
+.showcase-header p { color: var(--text-muted); font-size: 1.1rem; line-height: 1.6; }
 
 .big-visual-card {
-  background: var(--card-bg); border-radius: 24px; padding: 1rem;
-  border: 1px solid var(--border-glow); max-width: 1000px; margin: 0 auto;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border-radius: 24px;
+  padding: 12px;
+  border: 1px solid var(--border-glow);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), 0 0 24px rgba(130, 160, 255, 0.1);
+  max-width: 1000px;
+  margin: 0 auto;
+  overflow: hidden;
 }
-.simulated-dashboard {
-  background: rgba(0,0,0,0.3); border-radius: 16px; height: 500px;
-  display: flex; gap: 1rem; padding: 1rem; border: 1px solid var(--border-muted);
+
+.showcase-video {
+  width: 100%;
+  min-height: 480px;
+  object-fit: cover;
+  border-radius: 16px;
+  display: block;
+  box-shadow: 0 0 24px rgba(130, 160, 255, 0.2);
+  background: rgba(8, 12, 21, 0.9);
 }
-.dash-sidebar { width: 20%; background: rgba(255,255,255,0.05); border-radius: 8px;}
-.dash-main { flex: 1; display: flex; flex-direction: column; gap: 1rem; }
-.dash-widget { background: rgba(255,255,255,0.05); border-radius: 8px; }
-.dash-widget.large { flex: 2; }
-.dash-widget-row { display: flex; gap: 1rem; flex: 1; }
-.dash-widget.small { flex: 1; }
 
 /* Feature Grid */
 .feature-grid-section { padding: 5% 8% 8%; background: var(--bg-dark); }
-.grid-heading { font-size: 2.5rem; letter-spacing: -1px; margin-bottom: 4rem; max-width: 500px; }
+.grid-heading { font-size: 2.5rem; letter-spacing: -1px; margin-bottom: 4rem; max-width: 540px; }
 
 .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 3rem 2rem; }
 .grid-card { padding: 2rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-muted); border-radius: 16px; transition: 0.3s;}
 .grid-card:hover { border-color: var(--primary-accent); transform: translateY(-5px); }
-.icon-wrapper { font-size: 2rem; margin-bottom: 1.5rem; }
+.icon-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(130, 160, 255, 0.1);
+  border: 1px solid var(--border-glow);
+  color: var(--primary-accent);
+  margin-bottom: 1.5rem;
+}
+.feature-lucide-icon {
+  color: var(--primary-accent);
+}
 .grid-card h3 { font-size: 1.25rem; margin-bottom: 0.75rem; }
 .grid-card p { color: var(--text-muted); line-height: 1.6; margin-bottom: 1.5rem; }
-.learn-more { color: var(--primary-accent); font-weight: 600; text-decoration: none; }
+.learn-more {
+  color: var(--primary-accent);
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.learn-more-icon {
+  transition: transform 0.2s ease;
+}
+.learn-more:hover .learn-more-icon {
+  transform: translateX(4px);
+}
 
 /* Footer */
 .wharf-footer { padding: 6% 8% 2%; border-top: 1px solid var(--border-muted); }
 .footer-top { display: grid; grid-template-columns: 2fr 3fr; gap: 4rem; margin-bottom: 4rem; }
-.footer-brand p { color: var(--text-muted); margin-top: 1rem; line-height: 1.6; max-width: 300px; }
-.footer-links { display: flex; justify-content: space-between; }
-.link-column h4 { font-size: 0.875rem; text-transform: uppercase; color: var(--text-main); margin-bottom: 1.5rem; }
+.footer-brand .logo { margin-left: 0; }
+.footer-brand p { color: var(--text-muted); margin-top: 1rem; line-height: 1.6; max-width: 340px; }
+.footer-links { display: flex; justify-content: flex-start; gap: 6rem; }
+.link-column h4 { font-size: 0.875rem; text-transform: uppercase; color: var(--text-main); margin-bottom: 1.5rem; letter-spacing: 0.05em; }
 .link-column a { display: block; color: var(--text-muted); text-decoration: none; margin-bottom: 1rem; font-size: 0.95rem; }
 .link-column a:hover { color: var(--primary-accent); }
 
 .footer-bottom {
-  display: flex; justify-content: space-between; align-items: right;
+  display: flex; justify-content: space-between; align-items: center;
   padding-top: 2rem; border-top: 1px solid var(--border-muted); color: var(--text-muted); font-size: 0.875rem;
+}
+
+/* --- FLOATING BACK-TO-TOP BUTTON --- */
+.back-to-top-btn {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 999;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(11, 15, 25, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-glow);
+  color: var(--primary-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 12px rgba(130, 160, 255, 0.2);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.back-to-top-btn:hover {
+  transform: translateY(-4px);
+  background: rgba(26, 32, 44, 0.95);
+  border-color: var(--primary-accent);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), 0 0 20px rgba(130, 160, 255, 0.55);
+}
+
+/* --- RESPONSIVE BREAKPOINTS --- */
+@media (max-width: 1024px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 18% 6% 8%;
+    gap: 3rem;
+  }
+
+  .hero h1 {
+    font-size: 3rem;
+  }
+
+  .gis-terminal-card {
+    max-width: 100%;
+  }
+
+  .nav-anchor-links {
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .nav-anchor-links {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .wharf-nav.fixed {
+    padding: 1rem 5%;
+  }
+
+  .logo {
+    margin-left: 0;
+  }
+
+  .hero {
+    padding: 26% 5% 10%;
+  }
+
+  .hero h1 {
+    font-size: 2.35rem;
+  }
+
+  .gis-map-viewport {
+    height: 320px;
+  }
+
+  .showcase-video {
+    min-height: 280px;
+  }
+
+  .telemetry-badge {
+    padding: 0.45rem 0.65rem;
+  }
+
+  .telemetry-badge-title {
+    font-size: 0.64rem;
+  }
+
+  .telemetry-badge-row {
+    font-size: 0.6rem;
+  }
+
+  .footer-top {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+
+  .footer-links {
+    gap: 3rem;
+    flex-wrap: wrap;
+  }
 }

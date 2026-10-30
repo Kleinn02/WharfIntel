@@ -122,3 +122,12 @@ html, body, #root {
   overflow-x: hidden !important;
   background-color: #0b0f19 !important; /* Forces the deep navy background everywhere */
 }
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Protect Leaflet Map Tiles across Dashboard & Simulation */
+.leaflet-container img {
+  max-width: none !important;
+}

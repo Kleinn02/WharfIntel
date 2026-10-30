@@ -115,7 +115,7 @@ LIVE_VESSELS = {}
 
 async def fetch_ais_stream():
     api_key = "9b10e83852926e663e32eb347078171bae11e0bc" 
-    bounding_box = [[[-10.0, 100.0], [25.0, 145.0]]]
+    bounding_box = [[[-11.0, 92.0], [21.0, 141.0]]]
     subscribe_message = {
         "APIKey": api_key,
         "BoundingBoxes": bounding_box,
@@ -135,7 +135,7 @@ async def fetch_ais_stream():
                         mmsi = meta["MMSI"]
                         lat, lng = report.get("Latitude", 0), report.get("Longitude", 0)
                         
-                        if 90 >= lat >= -90 and 180 >= lng >= -180:
+                        if -11.0 <= lat <= 21.0 and 92.0 <= lng <= 141.0:
                             raw_name = meta.get("ShipName")
                             LIVE_VESSELS[mmsi] = {
                                 "id": str(mmsi),
@@ -348,7 +348,7 @@ def get_user_profile(username: str, db: Session = Depends(get_db)):
 @app.get("/api/vessels/active")
 def get_live_radar():
     # 🔥 BUMP TO 1000: Leaflet MarkerCluster can handle this smoothly.
-    return list(LIVE_VESSELS.values())[:1000]
+    return list(LIVE_VESSELS.values())
 
 # 🔥 ROUTE HARMONIZATION: Updated to send authoritative cargo_health
 @app.get("/api/admin/ticketing/active")

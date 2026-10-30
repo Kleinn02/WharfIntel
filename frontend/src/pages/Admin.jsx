@@ -1,7 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  Users,
+  Compass,
+  FileText,
+  X,
+  Plus,
+  LogOut,
+  Activity,
+  TrendingUp,
+  Package,
+  ShieldAlert,
+  CheckCircle2,
+  ChevronRight,
+  KeyRound,
+  Sliders,
+  CloudRain,
+  Sun,
+  AlertTriangle,
+  Search
+} from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import WeatherHUD from './WeatherHUD';
@@ -18,27 +38,29 @@ const getBearing = (startLat, startLng, endLat, endLng) => {
 };
 
 const createTransportIcon = (type, status, angle, health) => {
-  let color = '#10b981'; // Default to admin green
-  if (type === 'vessel') color = '#3498db'; 
-  if (health < 70 || status === 'Failed') color = '#ef4444'; 
-  
-  const truckSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="${color}" stroke="#111" stroke-width="1"><path d="M12 2L22 20L12 17L2 20L12 2Z"/></svg>`;
-  const vesselSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><path d="M4 22L12 2L20 22L12 16L4 22Z" fill="rgba(52, 152, 219, 0.2)"/></svg>`;
+  let color = '#10b981';
+  if (type === 'vessel') color = '#82a0ff';
+  if (health < 70 || status === 'Failed') color = '#ef4444';
+
+  const truckSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="${color}" stroke="#0b0f19" stroke-width="1.5"><path d="M12 2L22 20L12 17L2 20L12 2Z"/></svg>`;
+  const vesselSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><path d="M4 22L12 2L20 22L12 16L4 22Z" fill="rgba(130, 160, 255, 0.22)"/></svg>`;
 
   return L.divIcon({
     className: 'sim-vessel-icon',
-    html: `<div class="sim-vessel-wrapper" style="transform: rotate(${angle}deg); filter: drop-shadow(0px 0px 4px ${color});">
+    html: `<div class="sim-vessel-wrapper" style="transform: rotate(${angle}deg);">
              ${type === 'truck' ? truckSvg : vesselSvg}
            </div>`,
-    iconSize: [22, 22], iconAnchor: [11, 11]
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
   });
 };
 
 const createDotIcon = () => {
   return L.divIcon({
     className: 'waypoint-dot',
-    html: `<div style="width: 8px; height: 8px; background: white; border-radius: 50%; box-shadow: 0 0 5px rgba(255,255,255,0.8);"></div>`,
-    iconSize: [8, 8], iconAnchor: [4, 4]
+    html: `<div style="width: 6px; height: 6px; background: #82a0ff; border-radius: 50%; border: 1px solid #0b0f19;"></div>`,
+    iconSize: [6, 6],
+    iconAnchor: [3, 3]
   });
 };
 
@@ -67,69 +89,127 @@ const GLOBAL_HUBS = [
 const createHouseIcon = (color) => {
   return L.divIcon({
     className: 'hub-house-icon',
-    html: `<div style="background: ${color}; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 2px solid #111;">
-             <svg width="12" height="12" viewBox="0 0 24 24" fill="#111"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+    html: `<div style="background: ${color}; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border: 2px solid #0b0f19;">
+             <svg width="11" height="11" viewBox="0 0 24 24" fill="#0b0f19"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
            </div>`,
-    iconSize: [24, 24], iconAnchor: [12, 12]
+    iconSize: [22, 22],
+    iconAnchor: [11, 11]
   });
 };
 
-const economyData = [
-  { day: 'Mon', revenue: 850000 }, { day: 'Tue', revenue: 920000 },
-  { day: 'Wed', revenue: 980000 }, { day: 'Thu', revenue: 1050000 },
-  { day: 'Fri', revenue: 1120000 }, { day: 'Sat', revenue: 1150000 },
-  { day: 'Sun', revenue: 1189900 },
+// 7-day Multi-Brain Random Forest ETA Accuracy sparkline data (91% - 96%)
+const etaPrecisionData = [
+  { day: 'Mon', accuracy: 91.8 },
+  { day: 'Tue', accuracy: 92.6 },
+  { day: 'Wed', accuracy: 93.4 },
+  { day: 'Thu', accuracy: 94.1 },
+  { day: 'Fri', accuracy: 93.9 },
+  { day: 'Sat', accuracy: 95.2 },
+  { day: 'Sun', accuracy: 94.8 },
+];
+
+// Master Tab Definitions (Simplified Terminology)
+const ALL_TABS = [
+  { id: 'personnel', label: 'Users', icon: Users },
+  { id: 'voyages', label: 'Fleet Overwatch', icon: Compass },
+  { id: 'logs', label: 'System Logs', icon: FileText },
 ];
 
 const Admin = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('personnel'); 
+
+  // Dynamic Browser Tab Manager State
+  const [openTabs, setOpenTabs] = useState(ALL_TABS);
+  const [activeTabId, setActiveTabId] = useState('personnel');
+  const [quickOpenVisible, setQuickOpenVisible] = useState(false);
+  const quickOpenRef = useRef(null);
+
+  // Core Data State
   const [users, setUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [globalFleets, setGlobalFleets] = useState([]);
-  // 🔥 NEW: Weather Modal State
-  const [overrideModal, setOverrideModal] = useState({ isOpen: false, state: null, duration: 5 });
-  
-  // UI State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create'); 
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [showFacilityOps, setShowFacilityOps] = useState(true);
-  const [showClimate, setShowClimate] = useState(false); // 🔥 Repurposed from showEnvironment
-  const [weatherSyncTrigger, setWeatherSyncTrigger] = useState(0); // 🔥 NEW: Syncs HUD to Admin actions
-  
-  // Data State
-  const [systemLogs, setSystemLogs] = useState([]); // 🔥 State for DB logs
+  const [systemLogs, setSystemLogs] = useState([]);
   const [activeWeatherOverride, setActiveWeatherOverride] = useState(null);
 
-  // Form State
+  // UI & Modal State
+  const [overrideModal, setOverrideModal] = useState({ isOpen: false, state: null, duration: 5 });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('create');
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showFacilityOps, setShowFacilityOps] = useState(false);
+  const [showClimate, setShowClimate] = useState(true);
+  const [weatherSyncTrigger, setWeatherSyncTrigger] = useState(0);
+
+  // User Form State
   const [editId, setEditId] = useState(null);
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState(''); 
-  const [money, setMoney] = useState(200000);
+  const [password, setPassword] = useState('');
   const [reputation, setReputation] = useState(50);
   const [message, setMessage] = useState('');
+
+  // Instructor Invite Modal State
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteAdminPassword, setInviteAdminPassword] = useState('');
   const [generatedInvite, setGeneratedInvite] = useState(null);
   const [inviteError, setInviteError] = useState('');
   const [isGeneratingInvite, setIsGeneratingInvite] = useState(false);
 
-  const toggleFacilityOps = () => {
-    setShowFacilityOps(true);
-    setShowClimate(false);
-  };
+  const currentAdminName = localStorage.getItem('username') || 'admin';
 
-  const toggleClimate = () => {
-    setShowClimate(true);
-    setShowFacilityOps(false);
-  };
+  // Close Quick Open menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (quickOpenRef.current && !quickOpenRef.current.contains(e.target)) {
+        setQuickOpenVisible(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
+  // Auth Guard
   useEffect(() => {
     const currentUser = localStorage.getItem('username');
     if (currentUser !== 'admin' && localStorage.getItem('role') !== 'admin') {
-      navigate('/dashboard'); 
+      navigate('/dashboard');
     }
   }, [navigate]);
+
+  // Tab Manager Handlers
+  const handleSelectSidebarItem = (tabDef) => {
+    const exists = openTabs.some((t) => t.id === tabDef.id);
+    if (!exists) {
+      setOpenTabs((prev) => [...prev, tabDef]);
+    }
+    setActiveTabId(tabDef.id);
+    setQuickOpenVisible(false);
+  };
+
+  const handleCloseTab = (e, tabId) => {
+    e.stopPropagation();
+    const closingIdx = openTabs.findIndex((t) => t.id === tabId);
+    const updatedTabs = openTabs.filter((t) => t.id !== tabId);
+    setOpenTabs(updatedTabs);
+
+    if (activeTabId === tabId) {
+      if (updatedTabs.length === 0) {
+        setActiveTabId(null);
+      } else {
+        const nextIdx = Math.min(closingIdx, updatedTabs.length - 1);
+        setActiveTabId(updatedTabs[nextIdx].id);
+      }
+    }
+  };
+
+  const toggleFacilityOps = () => {
+    setShowFacilityOps((prev) => !prev);
+    if (!showFacilityOps) setShowClimate(false);
+  };
+
+  const toggleClimate = () => {
+    setShowClimate((prev) => !prev);
+    if (!showClimate) setShowFacilityOps(false);
+  };
 
   const fetchData = async () => {
     try {
@@ -138,47 +218,45 @@ const Admin = () => {
       if (resUsers.ok) setUsers(await resUsers.json());
 
       // 2. Fetch Active Ships
-      const resShips = await fetch('http://127.0.0.1:8000/api/admin/ticketing/active'); 
+      const resShips = await fetch('http://127.0.0.1:8000/api/admin/ticketing/active');
       if (resShips.ok) {
         const ships = await resShips.json();
-        const mappedShips = ships.map(s => {
+        const mappedShips = ships.map((s) => {
           const shipId = `TRK-${s.id}`;
           return {
             ...s,
             id: shipId,
             cargo: s.cargo_name,
-            category: s.category, 
+            category: s.category,
             waypoints: typeof s.route_waypoints === 'string' ? JSON.parse(s.route_waypoints) : s.route_waypoints,
             startTime: new Date(s.departure_time).getTime(),
             duration: s.total_duration_ms,
-            timeOffset: Number(localStorage.getItem(`offset_${shipId}`)) || 0 
+            timeOffset: Number(localStorage.getItem(`offset_${shipId}`)) || 0
           };
         });
         setGlobalFleets(mappedShips);
       }
 
-      // 3. 🔥 Fetch Permanent System Logs
+      // 3. Fetch Permanent System Logs
       const resLogs = await fetch('http://127.0.0.1:8000/api/admin/logs');
       if (resLogs.ok) setSystemLogs(await resLogs.json());
 
-      // 4. 🔥 NEW: Fetch Live Weather to keep Admin buttons synced without refreshing!
+      // 4. Fetch Live Weather State
       const resWeather = await fetch('http://127.0.0.1:8000/api/analytics/weather');
       if (resWeather.ok) {
         const weatherData = await resWeather.json();
-        // This will automatically highlight the correct button based on the backend state
         setActiveWeatherOverride(weatherData.admin_override);
       }
-
     } catch (err) {
-      console.error("Failed to fetch overwatch data:", err);
+      console.error('Failed to fetch overwatch data:', err);
     }
   };
 
-  useEffect(() => { 
-    fetchData(); 
-    const interval = setInterval(fetchData, 1000); 
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
-  }, []); 
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('username');
@@ -186,10 +264,9 @@ const Admin = () => {
     navigate('/');
   };
 
-  // 🔥 NEW: God Mode Weather Control Sender
   const initiateWeatherOverride = (state) => {
     if (state === null) {
-      handleWeatherOverride(null, 0); // AUTO mode doesn't need a duration
+      handleWeatherOverride(null, 0);
     } else {
       setOverrideModal({ isOpen: true, state: state, duration: 5 });
     }
@@ -205,15 +282,21 @@ const Admin = () => {
       if (res.ok) {
         setActiveWeatherOverride(state);
         setOverrideModal({ ...overrideModal, isOpen: false });
-        setWeatherSyncTrigger(prev => prev + 1); // 🔥 INSTANTLY SYNC THE WEATHER HUD!
-        fetchData(); // Instantly refresh logs
+        setWeatherSyncTrigger((prev) => prev + 1);
+        fetchData();
       }
-    } catch (e) { console.error("Override failed", e); }
+    } catch (e) {
+      console.error('Override failed', e);
+    }
   };
 
   const openCreateModal = () => {
-    setModalMode('create'); setUsername(''); setPassword('');
-    setMoney(200000); setReputation(50); setMessage(''); setIsModalOpen(true);
+    setModalMode('create');
+    setUsername('');
+    setPassword('');
+    setReputation(50);
+    setMessage('');
+    setIsModalOpen(true);
   };
 
   const openInviteModal = () => {
@@ -257,36 +340,60 @@ const Admin = () => {
   };
 
   const openEditModal = (user) => {
-    setModalMode('edit'); setEditId(user.id); setUsername(user.username);
-    setMoney(user.money); setReputation(user.reputation); setMessage(''); setIsModalOpen(true);
+    setModalMode('edit');
+    setEditId(user.id);
+    setUsername(user.username);
+    setReputation(user.reputation);
+    setMessage('');
+    setIsModalOpen(true);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
     setMessage('');
     try {
-      const endpoint = modalMode === 'create' ? 'http://127.0.0.1:8000/api/admin/users' : `http://127.0.0.1:8000/api/admin/users/${editId}`;
+      const endpoint =
+        modalMode === 'create'
+          ? 'http://127.0.0.1:8000/api/admin/users'
+          : `http://127.0.0.1:8000/api/admin/users/${editId}`;
       const method = modalMode === 'create' ? 'POST' : 'PUT';
-      const body = modalMode === 'create' 
-        ? { username, password, money: parseFloat(money), reputation: parseInt(reputation) }
-        : { money: parseFloat(money), reputation: parseInt(reputation) };
+      const existingUser = users.find((u) => u.id === editId);
+      const preservedMoney = existingUser && typeof existingUser.money === 'number' ? existingUser.money : 0;
+
+      const body =
+        modalMode === 'create'
+          ? { username, password, money: 0, reputation: parseInt(reputation, 10) }
+          : { money: preservedMoney, reputation: parseInt(reputation, 10) };
 
       const res = await fetch(endpoint, {
-        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error("Database transaction failed");
-      
+      if (!res.ok) throw new Error('Database transaction failed');
+
       setIsModalOpen(false);
       fetchData();
-    } catch (err) { setMessage(err.message); }
+    } catch (err) {
+      setMessage(err.message);
+    }
   };
 
   const handleDelete = async (id, name) => {
-    if (!window.confirm(`WARNING: Are you sure you want to completely purge Commander ${name}?`)) return;
+    if (!window.confirm(`Are you sure you want to delete user ${name}?`)) return;
     try {
       await fetch(`http://127.0.0.1:8000/api/admin/users/${id}`, { method: 'DELETE' });
       fetchData();
-    } catch (err) { alert("Failed to delete user."); }
+    } catch {
+      alert('Failed to delete user.');
+    }
+  };
+
+  // Compute deterministic Cargo Integrity Health Index per User
+  const getCargoIntegrity = (user) => {
+    const baseRep = Number(user.reputation) || 50;
+    const rawHealth = Math.min(99.8, Math.max(74.0, 82.0 + baseRep * 0.162));
+    return rawHealth.toFixed(1);
   };
 
   const calculateNavigation = (ship) => {
@@ -294,38 +401,52 @@ const Admin = () => {
     const elapsed = shipPersonalTime - ship.startTime;
     const waypoints = ship.waypoints || [];
     const totalSegments = Math.max(waypoints.length - 1, 1);
-    
-    let progress = Math.min(elapsed / ship.duration, 1);
-    
+
+    const progress = Math.min(elapsed / ship.duration, 1);
+
     if (ship.status === 'Arrived' || progress >= 1 || waypoints.length < 2) {
-      return { pos: waypoints[waypoints.length - 1] || [0,0], angle: 0, phase: { type: 'vessel', label: 'Delivered', step: 4 }, health: ship.category && ship.category.includes('Perishable') ? 60 : 100, progress: 1 };
+      return {
+        pos: waypoints[waypoints.length - 1] || [0, 0],
+        angle: 0,
+        phase: { type: 'vessel', label: 'Delivered', step: 4 },
+        health: ship.category && ship.category.includes('Perishable') ? 60 : 100,
+        progress: 1
+      };
     }
-    
+
     const segmentProgress = progress * totalSegments;
     const idx = Math.floor(segmentProgress);
     const nextIdx = idx + 1;
     const lerp = segmentProgress - idx;
-    
-    const currentPos = [waypoints[idx][0] + (waypoints[nextIdx][0] - waypoints[idx][0]) * lerp, waypoints[idx][1] + (waypoints[nextIdx][1] - waypoints[idx][1]) * lerp];    
-    
+
+    const currentPos = [
+      waypoints[idx][0] + (waypoints[nextIdx][0] - waypoints[idx][0]) * lerp,
+      waypoints[idx][1] + (waypoints[nextIdx][1] - waypoints[idx][1]) * lerp
+    ];
+
     let currentPhase = { type: 'vessel', label: 'Ocean Transit (Vessel)', step: 2 };
-    if (progress < 0.20) currentPhase = { type: 'truck', label: 'Origin Hub (Truck)', step: 1 };
+    if (progress < 0.2) currentPhase = { type: 'truck', label: 'Origin Hub (Truck)', step: 1 };
 
     let currentHealth = 100;
-    const isPerishable = (ship.category && ship.category.includes('Perishable')) || (ship.cargo && (ship.cargo.toLowerCase().includes('banana') || ship.cargo.toLowerCase().includes('food') || ship.cargo.toLowerCase().includes('fruit') || ship.cargo.toLowerCase().includes('meat') || ship.cargo.toLowerCase().includes('fish')));
+    const isPerishable =
+      (ship.category && ship.category.includes('Perishable')) ||
+      (ship.cargo &&
+        (ship.cargo.toLowerCase().includes('banana') ||
+          ship.cargo.toLowerCase().includes('food') ||
+          ship.cargo.toLowerCase().includes('fruit') ||
+          ship.cargo.toLowerCase().includes('meat') ||
+          ship.cargo.toLowerCase().includes('fish')));
 
     if (isPerishable) {
-      currentHealth = 100 - (progress * 25) - ((ship.shelter_count || 0) * 30);
-    } else {
-      if (ship.storm_event_handled && (ship.shelter_count || 0) === 0) {
-        currentHealth = 65; 
-      }
+      currentHealth = 100 - progress * 25 - (ship.shelter_count || 0) * 30;
+    } else if (ship.storm_event_handled && (ship.shelter_count || 0) === 0) {
+      currentHealth = 65;
     }
-    
+
     currentHealth = Math.max(0, Math.min(100, currentHealth)).toFixed(1);
 
-    return { 
-      pos: currentPos, 
+    return {
+      pos: currentPos,
       angle: getBearing(currentPos[0], currentPos[1], waypoints[nextIdx][0], waypoints[nextIdx][1]),
       phase: currentPhase,
       health: currentHealth,
@@ -333,546 +454,977 @@ const Admin = () => {
     };
   };
 
+  // Resolve clean Audit Log Category Tag (AUTH, DISPATCH, CLIMATE)
+  const getAuditCategory = (eventType = '') => {
+    const upper = eventType.toUpperCase();
+    if (upper.includes('CLIMATE') || upper.includes('WEATHER') || upper.includes('STORM')) {
+      return { tag: 'CLIMATE', className: 'log-tag-climate' };
+    }
+    if (upper.includes('AUTH') || upper.includes('USER') || upper.includes('LOGIN') || upper.includes('ADMIN') || upper.includes('SYSTEM')) {
+      return { tag: 'AUTH', className: 'log-tag-auth' };
+    }
+    return { tag: 'DISPATCH', className: 'log-tag-dispatch' };
+  };
+
+  // Sanitize logged event descriptions to replace "Cmdr" or "Commander" with "User"
+  const formatLogDescription = (desc = '') => {
+    return desc.replace(/\bCmdr\.?\b/gi, 'User').replace(/\bCommander\b/gi, 'User');
+  };
+
+  // Real-time case-insensitive user filtering
+  const filteredUsers = users.filter((u) =>
+    (u.username || '').toLowerCase().includes(searchTerm.trim().toLowerCase())
+  );
+
+  const onlineCount = Math.max(1, Math.min(users.length || 2, 3));
+
   return (
-    <div className="dashboard-wrapper admin-theme dark-mode" style={{ backgroundColor: '#050505', height: '100vh', width: '100vw', overflow: 'hidden', position: 'relative' }}>
-      
-      {/* 1. THE FULLSCREEN BACKGROUND MAP & CYBER GRID */}
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 0 }}>
-        
-        <MapContainer center={[7.284, 125.681]} zoom={5} minZoom={4} maxZoom={18} maxBounds={typeof SEA_BOUNDS !== 'undefined' ? SEA_BOUNDS : undefined} className="leaflet-container" zoomControl={false} style={{ width: '100%', height: '100%', background: '#030303' }}>
-         <TileLayer 
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}" 
-            attribution='Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ' 
-          />
-          
-          {/* Hub Markers */}
-          {PANABO_HUBS.map(hub => <Marker key={hub.id} position={hub.pos} icon={createHouseIcon('#10b981')} />)}
-          {NATIONAL_HUBS.map(hub => <Marker key={hub.id} position={hub.pos} icon={createHouseIcon('#3498db')} />)}
-          {GLOBAL_HUBS.map(hub => <Marker key={hub.id} position={hub.pos} icon={createHouseIcon('#f39c12')} />)}
-          
-          {globalFleets.map((exp) => {
-            const nav = calculateNavigation(exp);
-            return (
-              <React.Fragment key={exp.id}>
-                {exp.waypoints && exp.waypoints.length > 0 && exp.status === 'Outbound' && (
-                  <Polyline positions={exp.waypoints} pathOptions={{ color: '#10b981', dashArray: '5, 10', weight: 2, opacity: 0.4 }} />
-                )}
-                
-                {exp.status === 'Outbound' && exp.waypoints && exp.waypoints.map((wp, i) => (
-                  <Marker key={`dot-${i}`} position={wp} icon={createDotIcon()} />
-                ))}
-
-                <Marker position={nav.pos} icon={createTransportIcon(nav.phase.type, exp.status, nav.angle, nav.health)}>
-                  <Popup className="custom-popup dark-popup">
-                    <div style={{ padding: '12px', textAlign: 'left', minWidth: '180px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                        <div>
-                          <h4 style={{ margin: 0, color: '#10b981', textTransform: 'uppercase' }}>{exp.cargo}</h4>
-                          <span style={{ fontSize: '10px', color: '#888' }}>ID: {exp.id} • Cmdr: {exp.commander}</span>
-                        </div>
-                        <span style={{ fontSize: '10px', color: '#ccc', marginTop: '2px' }}>{exp.status}</span>
-                      </div>
-                      
-                      <div style={{ marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#aaa', textTransform: 'uppercase', marginBottom: '4px' }}>
-                          <span>Goods Health</span><span>{nav.health}%</span>
-                        </div>
-                        <div style={{ width: '100%', height: '6px', background: '#333', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${nav.health}%`, height: '100%', background: nav.health < 70 ? '#e74c3c' : '#10b981', transition: 'width 0.3s' }}></div>
-                        </div>
-                      </div>
-
-                      <div style={{ padding: '6px', borderRadius: '4px', marginBottom: '12px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '4px' }}>
-                          <span>Current Phase</span>
-                          <span>Progress</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '11px', color: '#e8eaf0', fontWeight: 'bold' }}>
-                            {exp.status === 'Arrived' ? 'DELIVERED' : nav.phase.label.toUpperCase()}
-                          </span>
-                          <strong style={{ color: '#10b981', fontSize: '12px' }}>
-                            {exp.status === 'Arrived' ? '100.0' : (nav.progress * 100).toFixed(1)}%
-                          </strong>
-                        </div>
-                      </div>
-                      
-                      <div style={{ fontSize: '9px', color: '#6b7280', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                        Admin Read-Only Access
-                      </div>
-                    </div>
-                  </Popup>
-                </Marker>
-              </React.Fragment>
-            );
-          })}
-        </MapContainer>
-
-        {/* ENHANCED MAP RADAR GRID OVERLAY */}
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', backgroundImage: 'linear-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(16, 185, 129, 0.1) 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
-      </div>
-
-      {/* Admin Sidebar */}
-      <aside className="sidebar expanded" style={{ borderRightColor: '#1e2330', zIndex: 10, background: 'rgba(5, 5, 5, 0.85)', backdropFilter: 'blur(15px)' }}>
-        <div className="sidebar-header">
-          <div className="brand-text">
-            <h2>Wharf<span style={{ color: '#10b981' }}>Admin</span></h2>
-            <p style={{ letterSpacing: '2px' }}>SYSTEM OVERWATCH</p>
+    <div className="admin-workbench-shell admin-theme">
+      {/* --- LEFT MINIMALIST SIDEBAR --- */}
+      <aside className="admin-sidebar">
+        <div className="admin-sidebar-top">
+          <div className="admin-brand-header">
+            <div className="admin-brand-logo-wrap">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 4L10 13L3 13L10 4Z" stroke="#82a0ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M13 6L13 13L19 13L13 6Z" stroke="#82a0ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 15L22 15C22 15 19 18 12 18C5 18 2 15 2 15Z" stroke="#82a0ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 21.5 Q 4.5 19.5 7 21.5 T 12 21.5 T 17 21.5 T 22 21.5" stroke="#82a0ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="admin-brand-wordmark">
+                Wharf<span>Intel</span>
+              </span>
+            </div>
+            <span className="admin-pill-badge">Admin</span>
           </div>
-        </div>
-        <div className="sidebar-content">
-          <nav className="side-nav">
-            <button 
-              className={activeTab === 'personnel' ? 'active' : ''} 
-              onClick={() => setActiveTab('personnel')}
-              style={activeTab === 'personnel' ? { backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderLeft: '3px solid #10b981' } : {}}
-            >
-               Personnel
-            </button>
-            <button 
-              className={activeTab === 'voyages' ? 'active' : ''} 
-              onClick={() => setActiveTab('voyages')}
-              style={activeTab === 'voyages' ? { backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderLeft: '3px solid #10b981' } : {}}
-            >
-               Active Voyages
-            </button>
-            <button 
-              className={activeTab === 'logs' ? 'active' : ''} 
-              onClick={() => setActiveTab('logs')}
-              style={activeTab === 'logs' ? { backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderLeft: '3px solid #10b981' } : {}}
-            >
-              System Logs
-            </button>
+
+          <div className="admin-nav-section-label">WORKSPACE VIEWS</div>
+          <nav className="admin-side-nav">
+            {ALL_TABS.map((item) => {
+              const IconComponent = item.icon;
+              const isOpen = openTabs.some((t) => t.id === item.id);
+              const isActive = isOpen && activeTabId === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`admin-nav-item ${isActive ? 'active' : ''}`}
+                  onClick={() => handleSelectSidebarItem(item)}
+                >
+                  <span className="admin-nav-item-left">
+                    <IconComponent size={17} className="admin-nav-icon" />
+                    <span>{item.label}</span>
+                  </span>
+                  {isOpen && <span className="admin-nav-open-indicator" />}
+                </button>
+              );
+            })}
           </nav>
-          <div className="nav-group bottom-group">
-            <button className="logout-btn" onClick={() => setShowLogoutModal(true)} style={{ color: '#ef4444' }}>
-              Disconnect System
-            </button>
+        </div>
+
+        {/* --- FLUSH DOCKED ACCOUNT ROW (BOTTOM LEFT) --- */}
+        <div className="admin-account-dock">
+          <div className="admin-account-info">
+            <div className="admin-avatar-circle">
+              <Users size={16} />
+            </div>
+            <div className="admin-account-meta">
+              <span className="admin-account-name">{currentAdminName}</span>
+              <span className="admin-account-role">Administrator</span>
+            </div>
           </div>
+          <button
+            type="button"
+            className="admin-dock-logout-btn"
+            onClick={() => setShowLogoutModal(true)}
+            title="Log Out"
+            aria-label="Log Out"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </aside>
 
-      {/* Main Admin Content */}
-      <main 
-        className="map-view" 
-        style={{ 
-          padding: activeTab === 'voyages' ? '0' : '16px 16px 16px 0', /* 🔥 Perfect 16px gap from sidebar */
-          overflow: 'hidden', 
-          position: 'relative',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 10,
-          pointerEvents: activeTab === 'voyages' ? 'none' : 'auto',
-          boxSizing: 'border-box'
-        }}
-      >
-        
-        {/* --- TAB: PERSONNEL --- */}
-        {activeTab === 'personnel' && (
-          <div style={{ 
-            pointerEvents: 'auto', 
-            background: 'rgba(5, 5, 5, 0.85)', 
-            backdropFilter: 'blur(12px)', 
-            padding: '24px', 
-            borderRadius: '20px', 
-            border: '1px solid var(--cyber-border)', 
-            boxShadow: '0 10px 40px rgba(0,0,0,0.6)', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            flex: 1, 
-            minHeight: 0, /* 🔥 CRUCIAL: Forces Chrome to scroll internally instead of overflowing screen */
-            boxSizing: 'border-box'
-          }}>
-            <div className="admin-provision-actions">
+      {/* --- MAIN WORKSPACE AREA WITH BROWSER TAB MANAGER --- */}
+      <div className="admin-workspace-area">
+        {/* Top Browser Tab Bar */}
+        <header className="admin-tabbar-header">
+          <div className="admin-tabs-strip" role="tablist">
+            {openTabs.map((tab) => {
+              const TabIcon = tab.icon;
+              const isActive = activeTabId === tab.id;
+              return (
+                <div
+                  key={tab.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={0}
+                  className={`admin-browser-tab ${isActive ? 'active' : ''}`}
+                  onClick={() => setActiveTabId(tab.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') setActiveTabId(tab.id);
+                  }}
+                >
+                  <TabIcon size={15} className="admin-tab-icon" />
+                  <span className="admin-tab-title">{tab.label}</span>
+                  <button
+                    type="button"
+                    className="admin-tab-close"
+                    onClick={(e) => handleCloseTab(e, tab.id)}
+                    aria-label={`Close ${tab.label} tab`}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Quick Open (+) Button */}
+            <div className="admin-quick-open-wrapper" ref={quickOpenRef}>
               <button
-                onClick={openCreateModal}
-                style={{ backgroundColor: 'var(--cyber-green)', color: '#000', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', border: 'none', cursor: 'pointer', transition: '0.2s', boxShadow: '0 0 15px var(--cyber-glow)' }}
+                type="button"
+                className="admin-tab-add-btn"
+                onClick={() => setQuickOpenVisible((prev) => !prev)}
+                aria-label="Open view tab"
+                title="Quick Open View"
               >
-                + Provision New Commander
+                <Plus size={15} />
               </button>
-              <button className="admin-invite-button" type="button" onClick={openInviteModal}>
-                Generate Instructor Invite
-              </button>
-            </div>
 
-            <div className="bento-grid-header">
-              {/* Card 1: Economy Graph */}
-              <div className="bento-card" style={{ padding: '24px', height: '220px', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div className="stat-label">System Economy Growth (7 Days)</div>
-                  <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold' }}>+12.4%</span>
-                </div>
-                <div style={{ flex: 1, minHeight: 0, marginTop: '10px' }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={economyData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e2330" vertical={false} />
-                      <XAxis dataKey="day" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value/1000}k`} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0b0f19', borderColor: '#1e2330', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
-                      <Line type="monotone" dataKey="revenue" stroke="var(--cyber-green)" strokeWidth={3} dot={false} activeDot={{ r: 6, fill: 'var(--cyber-green)', strokeWidth: 0 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Card 2: Circulating Economy */}
-              <div className="bento-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div className="stat-label">Circulating Economy</div>
-                  <span style={{ fontSize: '10px', background: 'rgba(130, 160, 255, 0.1)', color: '#82a0ff', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold' }}>Stable</span>
-                </div>
-                <div className="stat-value" style={{ color: 'var(--cyber-green)', fontSize: '36px', marginTop: '20px' }}>
-                  ${users.reduce((acc, curr) => acc + (curr.money || 0), 0).toLocaleString()}
-                </div>
-              </div>
-
-              {/* Card 3: Combined Commander Roster */}
-              <div className="bento-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', padding: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div className="stat-label">Commander Roster</div>
-                  <span style={{ fontSize: '10px', background: 'rgba(130, 160, 255, 0.1)', color: '#82a0ff', padding: '4px 10px', borderRadius: '12px', fontWeight: 'bold' }}>Synced</span>
-                </div>
-                <div className="stat-value" style={{ marginTop: '20px', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <span style={{ fontSize: '36px', color: '#fff' }}>{users.length}</span>
-                  <span style={{ fontSize: '14px', color: '#94a3b8', fontFamily: 'var(--font-sans)', fontWeight: '500' }}>Users</span>
-                </div>
-                <div style={{ marginTop: '16px', fontSize: '13px', color: '#3498db', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ marginRight: '8px', fontSize: '10px' }}>●</span> {Math.floor(Math.random() * 2) + 2} ONLINE
-                </div>
-              </div>
-            </div>
-
-            {/* 🔥 Added flex: 1 and overflowY so the table scrolls, not the page! */}
-            <div className="bento-main-table-card" style={{ flex: 1, overflowY: 'auto', minHeight: '200px' }}>
-              <table className="admin-custom-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Username</th>
-                    <th>Credits</th>
-                    <th>Reputation Map</th>
-                    <th style={{ textAlign: 'right' }}>Administrative Override</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(user => (
-                    <tr key={user.id}>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: '#6b7280' }}>#{user.id}</td>
-                      <td style={{ fontWeight: '600' }}>
-                        {user.username} {user.username === 'admin' && <span style={{fontSize: '10px', background: 'rgba(16,185,129,0.2)', color: 'var(--cyber-green)', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px'}}>OVERSEER</span>}
-                      </td>
-                      <td style={{ color: 'var(--cyber-green)', fontFamily: 'var(--font-mono)' }}>${user.money.toLocaleString()}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{ width: '80px', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                            <div style={{ width: `${user.reputation}%`, height: '100%', background: user.reputation > 40 ? 'var(--cyber-green)' : 'var(--cyber-danger)' }}></div>
-                          </div>
-                          <span style={{ fontSize: '12px', color: '#6b7280', fontFamily: 'var(--font-mono)' }}>{user.reputation}%</span>
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button onClick={() => openEditModal(user)} className="btn-edit-glow" style={{ marginRight: '8px', pointerEvents: 'auto' }}>Edit</button>
-                        <button onClick={() => handleDelete(user.id, user.username)} className="btn-purge-glow" style={{ pointerEvents: 'auto' }}>Purge</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* --- TAB: GLOBAL MAP OVERWATCH --- */}
-        {activeTab === 'voyages' && (
-          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-
-            {/* 🔥 GLOBAL OVERWATCH HEADER (Top Left, perfectly aligned with sidebar) */}
-            <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 1000, background: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(10px)', padding: '15px 20px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.3)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', pointerEvents: 'auto' }}>
-              <h3 style={{ margin: '0 0 5px 0', color: '#10b981', fontFamily: 'monospace', textTransform: 'uppercase' }}>Global Overwatch</h3>
-              <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Tracking {globalFleets.filter(f => f.status === 'Outbound').length} Active Deployments</p>
-            </div>
-
-            {/* 🔥 WEATHER HUD (Bottom Left, directly next to the Disconnect button) */}
-            <div style={{ position: 'absolute', bottom: '16px', left: '16px', zIndex: 1000, pointerEvents: 'auto' }}>
-               <WeatherHUD syncTrigger={weatherSyncTrigger} />
-            </div>
-
-            <div style={{ position: 'absolute', top: '16px', right: '16px', display: 'flex', flexDirection: 'column', gap: '15px', zIndex: 1000, pointerEvents: 'auto', width: '320px' }}>
-                   
-              {/* 1. FACILITY OPS PANEL */}
-              <div className={`admin-ops-panel ${!showFacilityOps ? 'minimized' : ''}`} style={{ position: 'relative', top: 0, right: 0, width: '100%', padding: showFacilityOps ? '16px' : '10px 16px', margin: 0, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-                {!showFacilityOps ? (
-                  <div onClick={toggleFacilityOps} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#10b981', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', cursor: 'pointer' }}>
-                    <span>FACILITY OPERATIONS</span>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid #333', paddingBottom: '10px' }}>
-                      <h3 style={{ margin: '0 0 14px 0', fontSize: '14px', color: '#fff' }}>FACILITY OPERATIONS</h3>
-                      <button onClick={() => setShowFacilityOps(false)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '18px' }}>×</button>
-                    </div>
-                    
-                    <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '5px' }}>
-                      <p style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', marginBottom: '8px' }}>Local Origin Hubs</p>
-                      {PANABO_HUBS.map(hub => (
-                        <div key={hub.id} style={{ padding: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid #333', borderLeft: '3px solid #10b981', borderRadius: '6px', marginBottom: '8px' }}>
-                          <h4 style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#10b981' }}>{hub.name}</h4>
-                          <span style={{ fontSize: '10px', color: '#888' }}>{hub.type} • {hub.stat}</span>
-                        </div>
-                      ))}
-                      
-                      <p style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', margin: '15px 0 8px 0' }}>National Markets</p>
-                      {NATIONAL_HUBS.map(hub => (
-                        <div key={hub.id} style={{ padding: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid #333', borderLeft: `3px solid #3498db`, borderRadius: '6px', marginBottom: '8px' }}>
-                          <h4 style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#fff' }}>{hub.name}</h4>
-                          <span style={{ fontSize: '10px', color: '#888' }}>{hub.type} • {hub.stat}</span>
-                        </div>
-                      ))}
-
-                      <p style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', margin: '15px 0 8px 0' }}>Global Terminals</p>
-                      {GLOBAL_HUBS.map(hub => (
-                        <div key={hub.id} style={{ padding: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid #333', borderLeft: `3px solid #f39c12`, borderRadius: '6px', marginBottom: '8px' }}>
-                          <h4 style={{ margin: '0 0 4px 0', fontSize: '12px', color: '#fff' }}>{hub.name}</h4>
-                          <span style={{ fontSize: '10px', color: '#888' }}>{hub.type} • {hub.stat}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* 2. 🔥 REPLACED: GLOBAL CLIMATE DIRECTIVE PANEL */}
-              <div className={`admin-ops-panel ${!showClimate ? 'minimized' : ''}`} style={{ position: 'relative', top: 0, right: 0, width: '100%', padding: showClimate ? '16px' : '10px 16px', margin: 0, border: '1px solid rgba(130, 160, 255, 0.4)', boxShadow: '0 8px 32px rgba(130, 160, 255, 0.15)' }}>
-                {!showClimate ? (
-                  <div onClick={toggleClimate} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#82a0ff', fontWeight: 'bold', fontSize: '12px', letterSpacing: '1px', cursor: 'pointer' }}>
-                    <span>GLOBAL CLIMATE DIRECTIVE</span>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid rgba(130, 160, 255, 0.3)', paddingBottom: '10px' }}>
-                      <h3 style={{ margin: 0, fontSize: '14px', color: '#82a0ff' }}>GLOBAL CLIMATE DIRECTIVE</h3>
-                      <button onClick={() => setShowClimate(false)} style={{ background: 'none', border: 'none', color: '#82a0ff', cursor: 'pointer', fontSize: '18px' }}>×</button>
-                    </div>
-                    
-                    <p style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', margin: '0 0 10px 0' }}>Override Stochastic RNG Engine</p>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <button 
-                        onClick={() => initiateWeatherOverride(null)} 
-                        style={{ padding: '10px', background: activeWeatherOverride === null ? 'rgba(130, 160, 255, 0.2)' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === null ? '#82a0ff' : '#333'}`, color: '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px' }}
+              {quickOpenVisible && (
+                <div className="admin-quick-open-menu">
+                  <div className="admin-quick-open-header">Quick Open</div>
+                  {ALL_TABS.map((item) => {
+                    const ItemIcon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="admin-quick-open-item"
+                        onClick={() => handleSelectSidebarItem(item)}
                       >
-                        🎲 AUTO (STOCHASTIC)
+                        <ItemIcon size={15} />
+                        <span>{item.label}</span>
                       </button>
-                      
-                      <button 
-                        onClick={() => initiateWeatherOverride('NOMINAL')} 
-                        style={{ padding: '10px', background: activeWeatherOverride === 'NOMINAL' ? '#2ecc71' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === 'NOMINAL' ? '#2ecc71' : '#333'}`, color: activeWeatherOverride === 'NOMINAL' ? '#000' : '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px', fontWeight: activeWeatherOverride === 'NOMINAL' ? 'bold' : 'normal' }}
-                      >
-                        🟢 FORCE NOMINAL <span style={{fontSize: '10px', opacity: 0.8}}>(5% Risk)</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => initiateWeatherOverride('DETERIORATING')} 
-                        style={{ padding: '10px', background: activeWeatherOverride === 'DETERIORATING' ? '#f1c40f' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === 'DETERIORATING' ? '#f1c40f' : '#333'}`, color: activeWeatherOverride === 'DETERIORATING' ? '#000' : '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px', fontWeight: activeWeatherOverride === 'DETERIORATING' ? 'bold' : 'normal' }}
-                      >
-                        🟡 FORCE DETERIORATING <span style={{fontSize: '10px', opacity: 0.8}}>(35% Risk)</span>
-                      </button>
-
-                      <button 
-                        onClick={() => initiateWeatherOverride('CYCLONE IMMINENT')} 
-                        style={{ padding: '10px', background: activeWeatherOverride === 'CYCLONE IMMINENT' ? '#e74c3c' : 'rgba(255,255,255,0.02)', border: `1px solid ${activeWeatherOverride === 'CYCLONE IMMINENT' ? '#e74c3c' : '#333'}`, color: '#fff', borderRadius: '6px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', fontSize: '12px', fontWeight: activeWeatherOverride === 'CYCLONE IMMINENT' ? 'bold' : 'normal' }}
-                      >
-                        🔴 FORCE CYCLONE <span style={{fontSize: '10px', opacity: 0.8}}>(85% Risk)</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-
-            </div>
-          </div>
-        )}
-
-        {/* --- TAB: SYSTEM LOGS --- */}
-        {activeTab === 'logs' && (
-          <div style={{ 
-            pointerEvents: 'auto', 
-            background: 'rgba(5, 5, 5, 0.85)', 
-            backdropFilter: 'blur(12px)', 
-            padding: '24px', 
-            borderRadius: '20px', 
-            border: '1px solid var(--cyber-border)', 
-            boxShadow: '0 10px 40px rgba(0,0,0,0.6)', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            flex: 1,
-            minHeight: 0, /* 🔥 CRUCIAL for Chrome flexbox scrolling */
-            boxSizing: 'border-box' 
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ color: '#fff', margin: 0, fontSize: '24px' }}>Server Audit Logs</h2>
-              <span className="badge docked">IMMUTABLE LEDGER</span>
-            </div>
-            {/* 🔥 Uses flex: 1 and minHeight: 0 to force internal scrolling */}
-            <div className="bento-main-table-card" style={{ padding: '20px', flex: 1, minHeight: 0, overflowY: 'auto' }}>
-
-              {systemLogs.length > 0 ? systemLogs.map(log => {
-                const d = new Date(log.timestamp);
-                const timeString = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')} ${d.toLocaleDateString()}`;
-                return (
-                  <div key={log.id} style={{ display: 'flex', gap: '15px', padding: '12px 0', borderBottom: '1px solid rgba(16, 185, 129, 0.1)', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>
-                    <span style={{ color: '#6b7280', minWidth: '130px' }}>[{timeString}]</span>
-                    <span style={{ 
-                      color: log.event_type.includes('SYSTEM') ? '#ef4444' : 
-                             log.event_type.includes('CLIMATE') ? '#f1c40f' : '#3498db', 
-                      minWidth: '70px', fontWeight: 'bold' 
-                    }}>
-                      {log.event_type}
-                    </span>
-                    <span style={{ color: '#e8eaf0' }}>{log.description}</span>
-                  </div>
-                );
-              }) : (
-                <p style={{ color: '#6b7280', textAlign: 'center', marginTop: '20px' }}>No audit logs recorded yet.</p>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
-        )}
-      </main>
+
+          <div className="admin-tabbar-right-meta">
+            <span className="admin-status-indicator">
+              <span className="status-emerald-dot" />
+              Administrator
+            </span>
+          </div>
+        </header>
+
+        {/* Active Tab Viewport */}
+        <main className="admin-tab-viewport">
+          {/* --- EMPTY STATE WHEN ALL TABS ARE CLOSED --- */}
+          {openTabs.length === 0 || !activeTabId ? (
+            <div className="admin-empty-workspace">
+              <div className="admin-empty-card">
+                <div className="admin-empty-icon-wrap">
+                  <Compass size={28} />
+                </div>
+                <h3>No Active Workbench Tab</h3>
+                <p>Select a view from the left sidebar or reopen a tab below to inspect operations.</p>
+                <div className="admin-empty-actions">
+                  {ALL_TABS.map((item) => {
+                    const ItemIcon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="admin-empty-open-btn"
+                        onClick={() => handleSelectSidebarItem(item)}
+                      >
+                        <ItemIcon size={15} />
+                        <span>{item.label}</span>
+                        <ChevronRight size={14} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* --- TAB 1: USERS (FORMERLY PERSONNEL) --- */}
+          {activeTabId === 'personnel' && openTabs.some((t) => t.id === 'personnel') && (
+            <div className="admin-panel-container">
+              <div className="admin-panel-toolbar">
+                <div>
+                  <h1 className="admin-panel-title">User Directory</h1>
+                  <p className="admin-panel-subtitle">
+                    Manage registered users, simulation trainees, and cargo handling integrity metrics.
+                  </p>
+                </div>
+                <div className="admin-provision-actions">
+                  <button type="button" className="btn-primary-periwinkle" onClick={openCreateModal}>
+                    <Plus size={16} />
+                    <span>+ Add User</span>
+                  </button>
+                  <button type="button" className="btn-secondary-slate" onClick={openInviteModal}>
+                    <KeyRound size={15} />
+                    <span>Generate Instructor Invite</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3 Top Metric Cards */}
+              <div className="bento-grid-header">
+                {/* Card 1: Total Freight Handled */}
+                <div className="bento-card">
+                  <div className="bento-card-top">
+                    <span className="stat-label">Total Freight Handled</span>
+                    <div className="bento-icon-badge">
+                      <Package size={16} />
+                    </div>
+                  </div>
+                  <div className="stat-value">142 TEU</div>
+                  <div className="stat-sublabel">
+                    <CheckCircle2 size={13} className="text-emerald" />
+                    <span>355,000 kg Cargo Discharged</span>
+                  </div>
+                </div>
+
+                {/* Card 2: Multi-Brain ETA Precision */}
+                <div className="bento-card bento-card-chart">
+                  <div className="bento-card-top">
+                    <div>
+                      <span className="stat-label">Multi-Brain ETA Precision</span>
+                      <div className="stat-value-inline">
+                        <span className="stat-value">94.8%</span>
+                        <span className="stat-sublabel-inline">Mean Ensemble Reliability</span>
+                      </div>
+                    </div>
+                    <span className="status-tag-emerald">
+                      <TrendingUp size={13} />
+                      <span>RF ENSEMBLE</span>
+                    </span>
+                  </div>
+                  <div className="sparkline-container">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={etaPrecisionData} margin={{ top: 6, right: 8, left: -26, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                        <XAxis dataKey="day" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis
+                          domain={[90, 97]}
+                          stroke="#64748b"
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={(v) => `${v}%`}
+                        />
+                        <Tooltip
+                          formatter={(value) => [`${value}%`, 'ETA Accuracy']}
+                          contentStyle={{
+                            backgroundColor: '#0e1422',
+                            borderColor: 'rgba(255,255,255,0.08)',
+                            borderRadius: '8px',
+                            color: '#ffffff',
+                            fontSize: '12px'
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="accuracy"
+                          stroke="#82a0ff"
+                          strokeWidth={2.25}
+                          dot={{ r: 2.5, fill: '#82a0ff', strokeWidth: 0 }}
+                          activeDot={{ r: 4.5, fill: '#82a0ff', strokeWidth: 0 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Card 3: Active Users */}
+                <div className="bento-card">
+                  <div className="bento-card-top">
+                    <span className="stat-label">Active Users</span>
+                    <span className="status-tag-periwinkle">Synced</span>
+                  </div>
+                  <div className="stat-value-row">
+                    <span className="stat-value">{users.length}</span>
+                    <span className="stat-unit">Users</span>
+                  </div>
+                  <div className="stat-online-row">
+                    <span className="status-emerald-dot" />
+                    <span>{onlineCount} Online Now</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Search Bar Toolbar Directly Above the Users Table */}
+              <div className="user-table-toolbar">
+                <span className="user-table-count">
+                  Showing <strong>{filteredUsers.length}</strong> of {users.length} users
+                </span>
+                <div className="user-search-wrapper">
+                  <Search size={15} className="user-search-icon" />
+                  <input
+                    type="text"
+                    className="user-search-input"
+                    placeholder="Search users..."
+                    style={{ paddingLeft: '38px' }}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    aria-label="Search users"
+                  />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      className="user-search-clear"
+                      onClick={() => setSearchTerm('')}
+                      aria-label="Clear search"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* User Directory Table with Strict Shared Column Widths */}
+              <div className="bento-main-table-card">
+                <div className="table-scroll-container">
+                  <table className="admin-custom-table users-table">
+                    <colgroup>
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '28%' }} />
+                      <col style={{ width: '22%' }} />
+                      <col style={{ width: '22%' }} />
+                      <col style={{ width: '18%' }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Cargo Integrity</th>
+                        <th>Reputation</th>
+                        <th className="text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.length > 0 ? (
+                        filteredUsers.map((user) => {
+                          const integrity = getCargoIntegrity(user);
+                          const isHighIntegrity = parseFloat(integrity) >= 90;
+                          return (
+                            <tr key={user.id}>
+                              <td className="mono-cell">#{user.id}</td>
+                              <td>
+                                <div className="commander-cell">
+                                  <span className="commander-name">{user.username}</span>
+                                  {user.username === 'admin' && <span className="role-chip-overseer">Admin</span>}
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`integrity-badge ${isHighIntegrity ? 'high' : 'moderate'}`}>
+                                  <Activity size={13} />
+                                  <span>{integrity}% Avg Health</span>
+                                </span>
+                              </td>
+                              <td>
+                                <div className="reputation-bar-group">
+                                  <div className="reputation-track">
+                                    <div
+                                      className="reputation-fill"
+                                      style={{
+                                        width: `${Math.min(100, Math.max(0, user.reputation))}%`,
+                                        backgroundColor: user.reputation > 40 ? '#10b981' : '#ef4444'
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="reputation-value">{user.reputation}%</span>
+                                </div>
+                              </td>
+                              <td className="text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(user)}
+                                  className="btn-table-edit"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(user.id, user.username)}
+                                  className="btn-table-purge"
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="empty-table-row">
+                            No users found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- TAB 2: FLEET OVERWATCH MAP --- */}
+          {activeTabId === 'voyages' && openTabs.some((t) => t.id === 'voyages') && (
+            <div className="overwatch-map-workbench">
+              <div className="overwatch-map-frame">
+                <MapContainer
+                  center={[7.284, 125.681]}
+                  zoom={5}
+                  minZoom={4}
+                  maxZoom={18}
+                  maxBounds={SEA_BOUNDS}
+                  className="leaflet-container"
+                  zoomControl={false}
+                >
+                  <TileLayer
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                    attribution="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ"
+                  />
+
+                  {PANABO_HUBS.map((hub) => (
+                    <Marker key={hub.id} position={hub.pos} icon={createHouseIcon('#10b981')} />
+                  ))}
+                  {NATIONAL_HUBS.map((hub) => (
+                    <Marker key={hub.id} position={hub.pos} icon={createHouseIcon('#82a0ff')} />
+                  ))}
+                  {GLOBAL_HUBS.map((hub) => (
+                    <Marker key={hub.id} position={hub.pos} icon={createHouseIcon('#f59e0b')} />
+                  ))}
+
+                  {globalFleets.map((exp) => {
+                    const nav = calculateNavigation(exp);
+                    return (
+                      <React.Fragment key={exp.id}>
+                        {exp.waypoints && exp.waypoints.length > 0 && exp.status === 'Outbound' && (
+                          <Polyline
+                            positions={exp.waypoints}
+                            pathOptions={{ color: '#82a0ff', dashArray: '6, 8', weight: 2, opacity: 0.55 }}
+                          />
+                        )}
+
+                        {exp.status === 'Outbound' &&
+                          exp.waypoints &&
+                          exp.waypoints.map((wp, i) => <Marker key={`dot-${i}`} position={wp} icon={createDotIcon()} />)}
+
+                        <Marker
+                          position={nav.pos}
+                          icon={createTransportIcon(nav.phase.type, exp.status, nav.angle, nav.health)}
+                        >
+                          <Popup className="custom-popup dark-popup">
+                            <div className="map-popup-body">
+                              <div className="map-popup-header">
+                                <div>
+                                  <h4>{exp.cargo}</h4>
+                                  <span>
+                                    ID: {exp.id} &bull; User: {exp.commander}
+                                  </span>
+                                </div>
+                                <span className="map-popup-status">{exp.status}</span>
+                              </div>
+
+                              <div className="map-popup-health">
+                                <div className="map-popup-row">
+                                  <span>Cargo Integrity</span>
+                                  <span>{nav.health}%</span>
+                                </div>
+                                <div className="map-popup-track">
+                                  <div
+                                    className="map-popup-fill"
+                                    style={{
+                                      width: `${nav.health}%`,
+                                      backgroundColor: nav.health < 70 ? '#ef4444' : '#10b981'
+                                    }}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="map-popup-phase">
+                                <div className="map-popup-row">
+                                  <span>Current Phase</span>
+                                  <span>Progress</span>
+                                </div>
+                                <div className="map-popup-row-strong">
+                                  <span>{exp.status === 'Arrived' ? 'DELIVERED' : nav.phase.label.toUpperCase()}</span>
+                                  <strong>{exp.status === 'Arrived' ? '100.0' : (nav.progress * 100).toFixed(1)}%</strong>
+                                </div>
+                              </div>
+
+                              <div className="map-popup-footer">Admin Read-Only View</div>
+                            </div>
+                          </Popup>
+                        </Marker>
+                      </React.Fragment>
+                    );
+                  })}
+                </MapContainer>
+
+                {/* Top-Left Overwatch Status Pill */}
+                <div className="overwatch-status-overlay">
+                  <div className="overwatch-status-title">
+                    <Compass size={16} className="text-periwinkle" />
+                    <span>BIMP-EAGA Fleet Overwatch</span>
+                  </div>
+                  <p>
+                    Tracking <strong>{globalFleets.filter((f) => f.status === 'Outbound').length}</strong> active deployments
+                  </p>
+                </div>
+
+                {/* Bottom-Left Weather HUD */}
+                <div className="overwatch-weather-hud-dock">
+                  <WeatherHUD syncTrigger={weatherSyncTrigger} />
+                </div>
+
+                {/* Top-Right Compact Slate Glass Toolbar */}
+                <div className="overwatch-Right-toolbar">
+                  <div className="overwatch-toolbar-toggles">
+                    <button
+                      type="button"
+                      className={`toolbar-toggle-btn ${showFacilityOps ? 'active' : ''}`}
+                      onClick={toggleFacilityOps}
+                    >
+                      <Package size={14} />
+                      <span>Facility Hubs</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`toolbar-toggle-btn ${showClimate ? 'active' : ''}`}
+                      onClick={toggleClimate}
+                    >
+                      <Sliders size={14} />
+                      <span>Climate Directive</span>
+                    </button>
+                  </div>
+
+                  {/* Collapsible Facility Hubs Drawer */}
+                  {showFacilityOps && (
+                    <div className="overwatch-drawer-card">
+                      <div className="overwatch-drawer-header">
+                        <span>REGIONAL PORT &amp; WAREHOUSE HUBS</span>
+                        <button type="button" onClick={() => setShowFacilityOps(false)} aria-label="Close Facility Hubs">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="overwatch-drawer-scroll">
+                        <div className="hub-group-label">Local Origin Hubs (Panabo)</div>
+                        {PANABO_HUBS.map((hub) => (
+                          <div key={hub.id} className="hub-list-item emerald-border">
+                            <h4>{hub.name}</h4>
+                            <span>{hub.type} &bull; {hub.stat}</span>
+                          </div>
+                        ))}
+
+                        <div className="hub-group-label">National Terminals</div>
+                        {NATIONAL_HUBS.map((hub) => (
+                          <div key={hub.id} className="hub-list-item periwinkle-border">
+                            <h4>{hub.name}</h4>
+                            <span>{hub.type} &bull; {hub.stat}</span>
+                          </div>
+                        ))}
+
+                        <div className="hub-group-label">ASEAN &amp; Global Hubs</div>
+                        {GLOBAL_HUBS.map((hub) => (
+                          <div key={hub.id} className="hub-list-item amber-border">
+                            <h4>{hub.name}</h4>
+                            <span>{hub.type} &bull; {hub.stat}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Collapsible Climate Directive Drawer */}
+                  {showClimate && (
+                    <div className="overwatch-drawer-card">
+                      <div className="overwatch-drawer-header">
+                        <span>WEATHER OVERRIDE</span>
+                        <button type="button" onClick={() => setShowClimate(false)} aria-label="Close Climate Panel">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <p className="overwatch-drawer-desc">
+                        Override Beaufort wind and wave conditions across all connected simulation sessions.
+                      </p>
+
+                      <div className="climate-controls-list">
+                        <button
+                          type="button"
+                          className={`climate-control-btn ${activeWeatherOverride === null ? 'active-auto' : ''}`}
+                          onClick={() => initiateWeatherOverride(null)}
+                        >
+                          <span className="climate-btn-left">
+                            <Activity size={14} />
+                            <span>AUTO (DEFAULT)</span>
+                          </span>
+                          <span className="climate-risk-tag">Dynamic</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`climate-control-btn ${activeWeatherOverride === 'NOMINAL' ? 'active-nominal' : ''}`}
+                          onClick={() => initiateWeatherOverride('NOMINAL')}
+                        >
+                          <span className="climate-btn-left">
+                            <Sun size={14} />
+                            <span>FORCE NOMINAL</span>
+                          </span>
+                          <span className="climate-risk-tag">5% Risk</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`climate-control-btn ${activeWeatherOverride === 'DETERIORATING' ? 'active-deteriorating' : ''}`}
+                          onClick={() => initiateWeatherOverride('DETERIORATING')}
+                        >
+                          <span className="climate-btn-left">
+                            <CloudRain size={14} />
+                            <span>FORCE DETERIORATING</span>
+                          </span>
+                          <span className="climate-risk-tag">35% Risk</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`climate-control-btn ${activeWeatherOverride === 'CYCLONE IMMINENT' ? 'active-cyclone' : ''}`}
+                          onClick={() => initiateWeatherOverride('CYCLONE IMMINENT')}
+                        >
+                          <span className="climate-btn-left">
+                            <AlertTriangle size={14} />
+                            <span>FORCE CYCLONE</span>
+                          </span>
+                          <span className="climate-risk-tag">85% Risk</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* --- TAB 3: SYSTEM LOGS (ACTIVITY LOG) --- */}
+          {activeTabId === 'logs' && openTabs.some((t) => t.id === 'logs') && (
+            <div className="admin-panel-container">
+              <div className="admin-panel-toolbar">
+                <div>
+                  <h1 className="admin-panel-title">System Logs</h1>
+                  <p className="admin-panel-subtitle">
+                    Chronological activity log of user logins, dispatches, and weather changes.
+                  </p>
+                </div>
+                <span className="audit-ledger-badge">
+                  <ShieldAlert size={14} />
+                  <span>Activity Log</span>
+                </span>
+              </div>
+
+              <div className="bento-main-table-card">
+                <div className="table-scroll-container">
+                  <table className="admin-custom-table audit-ledger-table">
+                    <colgroup>
+                      <col style={{ width: '22%' }} />
+                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '62%' }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Category</th>
+                        <th>Event Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {systemLogs.length > 0 ? (
+                        systemLogs.map((log) => {
+                          const d = new Date(log.timestamp);
+                          const timeString = `${d.getHours().toString().padStart(2, '0')}:${d
+                            .getMinutes()
+                            .toString()
+                            .padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')} ${d.toLocaleDateString()}`;
+                          const category = getAuditCategory(log.event_type);
+                          return (
+                            <tr key={log.id}>
+                              <td className="mono-cell">{timeString}</td>
+                              <td>
+                                <span className={`audit-category-tag ${category.className}`}>{category.tag}</span>
+                              </td>
+                              <td className="audit-desc-cell">{formatLogDescription(log.description)}</td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={3} className="empty-table-row">
+                            No activity logs recorded yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
 
       {/* --- WEATHER DURATION MODAL --- */}
       {overrideModal.isOpen && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setOverrideModal({ ...overrideModal, isOpen: false })}>
-          <div className="card auth-modal-card admin-modal-card" onClick={e => e.stopPropagation()} style={{ minHeight: 'auto', paddingBottom: '30px' }}>
-            <button className="exit-btn" onClick={() => setOverrideModal({ ...overrideModal, isOpen: false })}>&times;</button>
-            
-            <div className="screen-title" style={{ color: overrideModal.state === 'CYCLONE IMMINENT' ? '#ef4444' : '#f1c40f', marginBottom: '24px' }}>
-              Confirm Climate Override
+        <div
+          className="modal-overlay"
+          onClick={() => setOverrideModal({ ...overrideModal, isOpen: false })}
+        >
+          <div className="admin-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header">
+              <h2>Confirm Weather Override</h2>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setOverrideModal({ ...overrideModal, isOpen: false })}
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); handleWeatherOverride(overrideModal.state, overrideModal.duration); }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              
-              <div style={{ padding: '15px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', borderLeft: `3px solid ${overrideModal.state === 'CYCLONE IMMINENT' ? '#ef4444' : '#f1c40f'}` }}>
-                <strong style={{ display: 'block', color: '#fff', marginBottom: '5px' }}>TARGET STATE: {overrideModal.state}</strong>
-                <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>This will immediately force all connected simulation instances into this weather state.</p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleWeatherOverride(overrideModal.state, overrideModal.duration);
+              }}
+              className="admin-modal-form"
+            >
+              <div className="override-target-callout">
+                <strong>TARGET STATE: {overrideModal.state}</strong>
+                <p>This will immediately update all connected simulation sessions to this weather state.</p>
               </div>
 
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>DURATION (MINUTES)</label>
-                <div className="input-wrap">
-                  <input 
-                    type="number" 
-                    value={overrideModal.duration} 
-                    onChange={e => setOverrideModal({...overrideModal, duration: parseInt(e.target.value)})} 
-                    min="1" 
-                    required 
-                  />
-                </div>
-                <p style={{ margin: '5px 0 0 0', fontSize: '10px', color: '#6b7280' }}>No maximum limit. Engine reverts to AUTO when timer expires.</p>
+              <div className="form-group">
+                <label htmlFor="override-duration">DURATION (MINUTES)</label>
+                <input
+                  id="override-duration"
+                  type="number"
+                  value={overrideModal.duration}
+                  onChange={(e) => setOverrideModal({ ...overrideModal, duration: parseInt(e.target.value, 10) })}
+                  min="1"
+                  required
+                />
+                <span className="form-helper-text">
+                  Simulation reverts to automatic weather mode when the timer expires.
+                </span>
               </div>
-              
-              <button type="submit" className="btn-primary" style={{ backgroundColor: overrideModal.state === 'CYCLONE IMMINENT' ? '#ef4444' : '#f1c40f', color: '#000', marginTop: '10px' }}>
-                EXECUTE OVERRIDE
-              </button>
-            </form>
-          </div>
-        </div>
-        )
-      }
 
-      {/* --- CREATE / EDIT MODAL --- */}
-      {isModalOpen && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setIsModalOpen(false)}>
-          <div className="card auth-modal-card admin-modal-card" onClick={e => e.stopPropagation()} style={{ minHeight: 'auto', paddingBottom: '30px' }}>
-            <button className="exit-btn" onClick={() => setIsModalOpen(false)}>&times;</button>
-            
-            <div className="screen-title" style={{ color: '#10b981', marginBottom: '24px' }}>
-              {modalMode === 'create' ? 'Provision Commander' : 'Modify Parameters'}
-            </div>
-
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label>Username</label>
-                <div className="input-wrap">
-                  <input type="text" value={username} onChange={e => setUsername(e.target.value)} disabled={modalMode === 'edit'} style={{ opacity: modalMode === 'edit' ? 0.5 : 1 }} required />
-                </div>
+              <div className="admin-modal-actions">
+                <button
+                  type="button"
+                  className="btn-secondary-slate"
+                  onClick={() => setOverrideModal({ ...overrideModal, isOpen: false })}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary-periwinkle">
+                  Apply Override
+                </button>
               </div>
-              {modalMode === 'create' && (
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label>Initial Password</label>
-                  <div className="input-wrap">
-                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} minLength={8} required />
-                  </div>
-                </div>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label>Credits ($)</label>
-                  <div className="input-wrap">
-                    <input type="number" value={money} onChange={e => setMoney(e.target.value)} min="0" step="0.01" required />
-                  </div>
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label>Reputation (0-100)</label>
-                  <div className="input-wrap">
-                    <input type="number" value={reputation} onChange={e => setReputation(e.target.value)} min="0" required />
-                  </div>
-                </div>
-              </div>
-              <button type="submit" className="btn-primary" style={{ backgroundColor: '#10b981', color: '#000', marginTop: '10px' }}>
-                {modalMode === 'create' ? 'Execute Provision' : 'Commit Changes'}
-              </button>
-              {message && <div style={{ color: '#ef4444', fontSize: '12px', textAlign: 'center' }}>{message}</div>}
             </form>
           </div>
         </div>
       )}
 
+      {/* --- CREATE / EDIT USER MODAL --- */}
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="admin-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header">
+              <h2>{modalMode === 'create' ? 'Create User' : 'Edit User'}</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setIsModalOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="admin-modal-form">
+              <div className="form-group">
+                <label htmlFor="user-username">Username</label>
+                <input
+                  id="user-username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={modalMode === 'edit'}
+                  required
+                />
+              </div>
+
+              {modalMode === 'create' && (
+                <div className="form-group">
+                  <label htmlFor="user-password">Initial Password</label>
+                  <input
+                    id="user-password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    minLength={8}
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="user-reputation">Reputation Rating (0 - 100)</label>
+                <input
+                  id="user-reputation"
+                  type="number"
+                  value={reputation}
+                  onChange={(e) => setReputation(e.target.value)}
+                  min="0"
+                  max="100"
+                  required
+                />
+              </div>
+
+              {message && <div className="modal-error-banner">{message}</div>}
+
+              <div className="admin-modal-actions">
+                <button type="button" className="btn-secondary-slate" onClick={() => setIsModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary-periwinkle">
+                  Save User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- INSTRUCTOR INVITE MODAL --- */}
       {inviteModalOpen && (
-        <div className="modal-overlay admin-invite-overlay" onClick={() => setInviteModalOpen(false)}>
-          <section className="card auth-modal-card admin-modal-card admin-invite-card" role="dialog" aria-modal="true" aria-labelledby="instructor-invite-title" onClick={event => event.stopPropagation()}>
-            <button className="exit-btn" type="button" onClick={() => setInviteModalOpen(false)} aria-label="Close instructor invite">&times;</button>
-            <p className="admin-invite-eyebrow">PERSONNEL / ACCESS CONTROL</p>
-            <h2 id="instructor-invite-title">Generate instructor invite</h2>
-            <p className="admin-invite-description">Create a random, single-use code that expires after 24 hours. Verify your admin password to continue.</p>
+        <div className="modal-overlay" onClick={() => setInviteModalOpen(false)}>
+          <section
+            className="admin-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="instructor-invite-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="admin-modal-header">
+              <div>
+                <p className="admin-invite-eyebrow">USERS / ACCESS CONTROL</p>
+                <h2 id="instructor-invite-title">Generate Instructor Invite</h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setInviteModalOpen(false)}
+                aria-label="Close instructor invite"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="admin-invite-description">
+              Create a random, single-use invite code that expires after 24 hours. Verify your admin password to continue.
+            </p>
 
             {!generatedInvite ? (
-              <form className="admin-invite-form" onSubmit={generateInstructorInvite}>
-                <label htmlFor="invite-admin-username">Admin username</label>
-                <input id="invite-admin-username" type="text" value={localStorage.getItem('username') || ''} readOnly />
-                <label htmlFor="invite-admin-password">Admin password</label>
-                <input id="invite-admin-password" type="password" value={inviteAdminPassword} onChange={event => setInviteAdminPassword(event.target.value)} autoComplete="current-password" required />
-                {inviteError && <p className="admin-invite-error" role="alert">{inviteError}</p>}
-                <div className="admin-invite-actions">
-                  <button className="admin-invite-cancel" type="button" onClick={() => setInviteModalOpen(false)}>Cancel</button>
-                  <button className="admin-invite-submit" type="submit" disabled={isGeneratingInvite}>{isGeneratingInvite ? 'Generating…' : 'Generate code'}</button>
+              <form className="admin-modal-form" onSubmit={generateInstructorInvite}>
+                <div className="form-group">
+                  <label htmlFor="invite-admin-username">Admin Username</label>
+                  <input id="invite-admin-username" type="text" value={currentAdminName} readOnly />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="invite-admin-password">Admin Password</label>
+                  <input
+                    id="invite-admin-password"
+                    type="password"
+                    value={inviteAdminPassword}
+                    onChange={(e) => setInviteAdminPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+                {inviteError && (
+                  <p className="modal-error-banner" role="alert">
+                    {inviteError}
+                  </p>
+                )}
+                <div className="admin-modal-actions">
+                  <button type="button" className="btn-secondary-slate" onClick={() => setInviteModalOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary-periwinkle" disabled={isGeneratingInvite}>
+                    {isGeneratingInvite ? 'Generating...' : 'Generate Code'}
+                  </button>
                 </div>
               </form>
             ) : (
-              <div className="admin-invite-result">
-                <label htmlFor="generated-instructor-invite">Single-use instructor code</label>
-                <input id="generated-instructor-invite" value={generatedInvite.invite_code} readOnly onFocus={event => event.target.select()} />
-                <p>Expires {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(generatedInvite.expires_at))}. The instructor enters this code when registering.</p>
-                {inviteError && <p className="admin-invite-copy-note" role="status">{inviteError}</p>}
-                <div className="admin-invite-actions">
-                  <button className="admin-invite-cancel" type="button" onClick={() => setInviteModalOpen(false)}>Close</button>
-                  <button className="admin-invite-submit" type="button" onClick={copyInstructorInvite}>Copy code</button>
+              <div className="admin-modal-form">
+                <div className="form-group">
+                  <label htmlFor="generated-instructor-invite">Single-Use Instructor Code</label>
+                  <input
+                    id="generated-instructor-invite"
+                    value={generatedInvite.invite_code}
+                    readOnly
+                    onFocus={(e) => e.target.select()}
+                  />
+                </div>
+                <p className="admin-invite-description">
+                  Expires{' '}
+                  {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
+                    new Date(generatedInvite.expires_at)
+                  )}
+                  . The instructor enters this code when registering.
+                </p>
+                {inviteError && (
+                  <p className="admin-invite-copy-note" role="status">
+                    {inviteError}
+                  </p>
+                )}
+                <div className="admin-modal-actions">
+                  <button type="button" className="btn-secondary-slate" onClick={() => setInviteModalOpen(false)}>
+                    Close
+                  </button>
+                  <button type="button" className="btn-primary-periwinkle" onClick={copyInstructorInvite}>
+                    Copy Code
+                  </button>
                 </div>
               </div>
             )}
           </section>
         </div>
       )}
-      
-      {/* --- LOGOUT WARNING MODAL --- */}
+
+      {/* --- LOGOUT CONFIRMATION MODAL --- */}
       {showLogoutModal && (
-        <div className="modal-overlay" style={{ zIndex: 9999 }} onClick={() => setShowLogoutModal(false)}>
-          <div className="card auth-modal-card admin-modal-card" onClick={e => e.stopPropagation()} style={{ minHeight: 'auto', textAlign: 'center', padding: '30px' }}>
-            <h3 style={{ color: '#ef4444', fontFamily: 'var(--font-mono)', margin: '0 0 10px 0' }}>SYSTEM DISCONNECT</h3>
-            <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '25px' }}>Are you sure you want to drop your secure connection to the WharfAdmin terminal?</p>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={() => setShowLogoutModal(false)} style={{ flex: 1, padding: '10px', background: 'transparent', border: '1px solid #333', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleLogout} style={{ flex: 1, padding: '10px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Confirm Disconnect</button>
+        <div className="modal-overlay" onClick={() => setShowLogoutModal(false)}>
+          <div className="admin-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-header">
+              <h2>Log Out</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setShowLogoutModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <p className="admin-invite-description">
+              Are you sure you want to log out of your administrator account?
+            </p>
+            <div className="admin-modal-actions">
+              <button type="button" className="btn-secondary-slate" onClick={() => setShowLogoutModal(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn-danger-flat" onClick={handleLogout}>
+                Confirm Log Out
+              </button>
             </div>
           </div>
         </div>

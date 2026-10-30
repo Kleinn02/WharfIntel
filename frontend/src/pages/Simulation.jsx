@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CheckCircle2, AlertTriangle, Clock, Play, FastForward, Zap, X, ArrowLeft, ChevronDown } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './Simulation.css';
@@ -868,7 +869,7 @@ const Simulation = () => {
             onClick={() => setManualPanToast(false)}
             aria-label="Dismiss"
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       )}
@@ -1159,7 +1160,9 @@ const Simulation = () => {
         <div className="modal-overlay" style={{ zIndex: 10000 }}>
           <div className={`custom-notification ${notification.type}`}>
             <div className="notif-header">
-              <span className="notif-icon">{notification.type === 'success' ? '✅' : '⚠️'}</span>
+              <span className="notif-icon" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: notification.type === 'success' ? 'var(--accent-green)' : 'var(--accent-warning)' }}>
+                {notification.type === 'success' ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
+              </span>
               <h3>{notification.title}</h3>
             </div>
             <p className="notif-message">{notification.message}</p>
@@ -1232,7 +1235,7 @@ const Simulation = () => {
                       onClick={() => setSelectedTrackingId(null)} 
                       style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', padding: 0, fontSize: '13px', fontWeight: 600, fontFamily: 'var(--font-sans)' }}
                     >
-                      ← Back to Fleet
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}><ArrowLeft size={14} /> Back to Fleet</span>
                     </button>
 
                     <button 
@@ -1245,7 +1248,8 @@ const Simulation = () => {
                       disabled={trackedShip.status !== 'Outbound'}
                       style={{ opacity: trackedShip.status !== 'Outbound' ? 0.5 : 1, cursor: trackedShip.status !== 'Outbound' ? 'not-allowed' : 'pointer' }}
                     >
-                      {isAutoFollow ? '◉ AUTO: ON' : '○ AUTO: OFF'}
+                      <span className={`nav-indicator-dot ${isAutoFollow ? 'dot-active' : ''}`} />
+                      <span>{isAutoFollow ? 'AUTO: ON' : 'AUTO: OFF'}</span>
                     </button>
                   </div>
                   
@@ -1538,9 +1542,15 @@ const Simulation = () => {
 
               {/* Compact VGM Status Pill immediately beneath Row A */}
               <div className={`vgm-badge ${isVgmOverload ? 'vgm-overload' : 'vgm-verified'}`}>
-                {isVgmOverload
-                  ? `⚠️ VGM OVERLOAD: Exceeds 25,000 kg (25 Tons) crane safety limit per container`
-                  : `[✓ VGM VERIFIED: ${activeTeuCount} TEU (${(weightKg / activeTeuCount / 1000).toFixed(1)}t / container)]`}
+                {isVgmOverload ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <AlertTriangle size={13} /> VGM OVERLOAD: Exceeds 25,000 kg (25 Tons) crane safety limit per container
+                  </span>
+                ) : (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <CheckCircle2 size={13} /> [VGM VERIFIED: {activeTeuCount} TEU ({(weightKg / activeTeuCount / 1000).toFixed(1)}t / container)]
+                  </span>
+                )}
               </div>
 
               <div className="form-group">
@@ -1614,8 +1624,8 @@ const Simulation = () => {
                       className="combobox-chevron-btn"
                       onClick={() => setIsComboboxOpen(!isComboboxOpen)}
                       tabIndex={-1}
-                    >
-                      ▾
+                      >
+                      <ChevronDown size={14} />
                     </button>
                   </div>
 
@@ -1656,11 +1666,17 @@ const Simulation = () => {
                 className={`btn-launch-sim ${isFleetFull ? 'state-deployed' : ''}`}
                 disabled={isFleetFull || isVgmOverload}
               >
-                {isFleetFull
-                  ? "⏳ FLEET AT CAPACITY (3/3)"
-                  : isVgmOverload
-                  ? "⚠️ VGM CRANE OVERLOAD (>25t/TEU)"
-                  : "Confirm Order"}
+                {isFleetFull ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <Clock size={14} /> FLEET AT CAPACITY (3/3)
+                  </span>
+                ) : isVgmOverload ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <AlertTriangle size={14} /> VGM CRANE OVERLOAD (&gt;25t/TEU)
+                  </span>
+                ) : (
+                  "Confirm Order"
+                )}
               </button>
             </form>
           </>
@@ -1905,9 +1921,15 @@ const Simulation = () => {
               {trackedShip.status === 'Outbound' && (
                 <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 1)}>▶</button>
-                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed > 1 && trackedShip.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, Math.max(2, Math.floor(trackedShip.duration * 0.01 / 3000)))}>⏭</button>
-                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', fontSize: '14px', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 21600)}>🚀</button>
+                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed === 1 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 1)} title="Standard Speed (1x)">
+                      <Play size={15} />
+                    </button>
+                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed > 1 && trackedShip.currentSpeed < 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, Math.max(2, Math.floor(trackedShip.duration * 0.01 / 3000)))} title="Cruise Step">
+                      <FastForward size={15} />
+                    </button>
+                    <button type="button" disabled={Boolean(relaunchEvent)} className={`time-opt-btn ${trackedShip.currentSpeed >= 21600 ? 'active-blue' : ''}`} style={{ padding: '8px 16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', opacity: relaunchEvent ? 0.3 : 1 }} onClick={() => triggerWarpSequence(trackedShip.id, 21600)} title="Max Warp">
+                      <Zap size={15} />
+                    </button>
                   </div>
                 </div>
               )}
